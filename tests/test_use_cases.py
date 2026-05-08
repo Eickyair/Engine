@@ -3,7 +3,7 @@ import asyncio
 import pytest
 
 from traffic_engine.application.use_cases import CancelSimulationUseCase, CreateSimulationUseCase
-from traffic_engine.domain.exceptions import SimulationCancellationError
+from traffic_engine.domain.exceptions import SimulationCancellationError, SimulationConfigurationError
 from traffic_engine.domain.models import GeographicArea, SimulationRecord, SimulationStatus
 
 
@@ -144,6 +144,28 @@ def test_create_simulation_dispatches_runtime_and_stores_running_record() -> Non
     assert record.status == SimulationStatus.RUNNING
     assert runtime.started == [record.simulation_id]
     assert simulation_repository.get(record.simulation_id) is not None
+
+
+def test_create_simulation_rejects_lane_changes_without_multiple_lanes_before_runtime() -> None:
+    area_repository = FakeAreaRepository(_sample_area())
+    simulation_repository = FakeSimulationRepository()
+    runtime = FakeRuntime()
+    use_case = CreateSimulationUseCase(
+        area_repository=area_repository,
+        simulation_repository=simulation_repository,
+        runtime=runtime,
+        run_simulation=FakeRunSimulationUseCase(),
+    )
+
+    with pytest.raises(SimulationConfigurationError):
+        use_case.execute(
+            area_id="roma-norte",
+            default_lanes=1,
+            enable_lane_changes=True,
+        )
+
+    assert runtime.started == []
+    assert simulation_repository.records == {}
 
 
 def test_cancel_simulation_rejects_non_running_record() -> None:

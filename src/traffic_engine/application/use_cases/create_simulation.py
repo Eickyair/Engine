@@ -12,7 +12,7 @@ from ...config import (
     DEFAULT_SPAWN_RATE,
     DEFAULT_TICK_INTERVAL_MS,
 )
-from ...domain.exceptions import GeographicAreaNotFoundError
+from ...domain.exceptions import GeographicAreaNotFoundError, SimulationConfigurationError
 from ...domain.models import (
     GeographicArea,
     SimulationConfig,
@@ -59,6 +59,12 @@ class CreateSimulationUseCase:
         if area is None:
             raise GeographicAreaNotFoundError(f"Geographic area '{area_id}' is not available.")
 
+        normalized_default_lanes = max(1, default_lanes)
+        if enable_lane_changes and normalized_default_lanes < 2:
+            raise SimulationConfigurationError(
+                "Lane changes require at least two lanes in the default lane configuration."
+            )
+
         record = SimulationRecord(
             simulation_id=uuid4().hex,
             area_id=area.area_id,
@@ -72,7 +78,7 @@ class CreateSimulationUseCase:
                 seed=seed,
                 tick_interval_ms=tick_interval_ms,
                 execution_mode=execution_mode,
-                default_lanes=max(1, default_lanes),
+                default_lanes=normalized_default_lanes,
                 traffic_light_percentage=max(0.0, min(1.0, traffic_light_percentage)),
                 traffic_light_green_steps=max(1, traffic_light_green_steps),
                 traffic_light_red_steps=max(0, traffic_light_red_steps),

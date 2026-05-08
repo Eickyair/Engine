@@ -94,6 +94,11 @@ class NaSchSimulationModel:
             vehicle = self._vehicles.get(vehicle_id)
             if vehicle is None:
                 continue
+            vehicle.is_changing_lane = vehicle.lane_change_ticks_remaining > 0
+            vehicle.lane_change_ticks_remaining = max(
+                0,
+                vehicle.lane_change_ticks_remaining - 1,
+            )
 
             current_edge = vehicle.current_edge
             edge_data = self._topology.edges[current_edge]
@@ -103,6 +108,8 @@ class NaSchSimulationModel:
             if target_lane != vehicle.lane:
                 self._edge_cells[current_edge][vehicle.lane][vehicle.cell_pos] = 0
                 vehicle.lane = target_lane
+                vehicle.is_changing_lane = True
+                vehicle.lane_change_ticks_remaining = 3
                 self._edge_cells[current_edge][vehicle.lane][vehicle.cell_pos] = vehicle_id
                 new_velocity = 0
             else:
@@ -315,9 +322,11 @@ class NaSchSimulationModel:
         return new_velocity
 
     def _first_free_spawn_cell(self, edge_id: EdgeId) -> tuple[int | None, int]:
-        for lane, cells in enumerate(self._edge_cells[edge_id]):
-            for index, value in enumerate(cells[:3]):
-                if value == 0:
+        edge_lanes = self._edge_cells[edge_id]
+        entry_window = min(3, max((len(cells) for cells in edge_lanes), default=0))
+        for index in range(entry_window):
+            for lane, cells in enumerate(edge_lanes):
+                if index < len(cells) and cells[index] == 0:
                     return lane, index
         return None, 0
 
@@ -380,6 +389,7 @@ class NaSchSimulationModel:
             lane=vehicle.lane,
             cell_position=vehicle.cell_pos,
             direction=(vehicle.current_edge[0], vehicle.current_edge[1]),
+            is_changing_lane=vehicle.is_changing_lane,
         )
 
     def _build_cell_snapshots(self) -> List[CellSnapshot]:

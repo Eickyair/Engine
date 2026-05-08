@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 
 import traffic_engine.api.app as app_module
+from traffic_engine.domain.exceptions import SimulationConfigurationError
 from traffic_engine.domain.models import GeographicArea, SimulationConfig, SimulationRecord, SimulationStatus
 
 
@@ -16,6 +17,10 @@ class FakeListAreasUseCase:
 
 class FakeCreateSimulationUseCase:
     def execute(self, area_id: str, **kwargs):
+        if kwargs.get("enable_lane_changes") and kwargs.get("default_lanes") == 1:
+            raise SimulationConfigurationError(
+                "Lane changes require at least two lanes in the default lane configuration."
+            )
         return SimulationRecord(
             simulation_id="sim-001",
             area_id=area_id,
@@ -149,6 +154,35 @@ def test_api_lists_areas_and_creates_simulation() -> None:
     assert create_response.status_code == 201
     assert create_response.json()["simulation_id"] == "sim-001"
     assert steps_response.status_code == 409
+
+
+def test_api_rejects_lane_changes_without_multiple_lanes() -> None:
+    fake_container = type(
+        "FakeContainer",
+        (),
+        {
+            "create_simulation": FakeCreateSimulationUseCase(),
+            "runtime": FakeRuntime(),
+            "shutdown": FakeRuntime().shutdown,
+        },
+    )()
+
+    app_module.app.dependency_overrides[app_module.get_container] = lambda: fake_container
+    client = TestClient(app_module.app)
+
+    response = client.post(
+        "/simulations",
+        json={
+            "area_id": "roma-norte",
+            "default_lanes": 1,
+            "enable_lane_changes": True,
+        },
+    )
+
+    app_module.app.dependency_overrides.clear()
+
+    assert response.status_code == 422
+    assert "at least two lanes" in response.json()["detail"]
 
 
 def test_websocket_serializes_datetime_events() -> None:
