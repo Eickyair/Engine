@@ -13,7 +13,13 @@ from ...config import (
     DEFAULT_TICK_INTERVAL_MS,
 )
 from ...domain.exceptions import GeographicAreaNotFoundError
-from ...domain.models import GeographicArea, SimulationConfig, SimulationRecord, SimulationStatus
+from ...domain.models import (
+    GeographicArea,
+    SimulationConfig,
+    SimulationExecutionMode,
+    SimulationRecord,
+    SimulationStatus,
+)
 from ..ports import GeographicAreaRepository, SimulationRepository, SimulationRuntime
 from .run_simulation import RunSimulationUseCase
 
@@ -42,6 +48,12 @@ class CreateSimulationUseCase:
         noise_prob: float = DEFAULT_NOISE_PROB,
         seed: int = 42,
         tick_interval_ms: int = DEFAULT_TICK_INTERVAL_MS,
+        execution_mode: SimulationExecutionMode = SimulationExecutionMode.CONTINUOUS,
+        default_lanes: int = 1,
+        traffic_light_percentage: float = 0.0,
+        traffic_light_green_steps: int = 10,
+        traffic_light_red_steps: int = 10,
+        enable_lane_changes: bool = False,
     ) -> SimulationRecord:
         area = self.area_repository.get(area_id)
         if area is None:
@@ -59,6 +71,12 @@ class CreateSimulationUseCase:
                 noise_prob=noise_prob,
                 seed=seed,
                 tick_interval_ms=tick_interval_ms,
+                execution_mode=execution_mode,
+                default_lanes=max(1, default_lanes),
+                traffic_light_percentage=max(0.0, min(1.0, traffic_light_percentage)),
+                traffic_light_green_steps=max(1, traffic_light_green_steps),
+                traffic_light_red_steps=max(0, traffic_light_red_steps),
+                enable_lane_changes=enable_lane_changes,
             ),
         )
         stored = self.simulation_repository.create(record)

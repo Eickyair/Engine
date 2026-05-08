@@ -32,6 +32,15 @@ class FakeCreateSimulationUseCase:
         )
 
 
+class FakeGetGeographicAreaUseCase:
+    def __init__(self, area: GeographicArea) -> None:
+        self.area = area
+
+    def execute(self, area_id: str):
+        assert area_id == self.area.area_id
+        return self.area
+
+
 class FakeGetSimulationUseCase:
     def execute(self, simulation_id: str):
         return SimulationRecord(
@@ -111,6 +120,7 @@ def test_api_lists_areas_and_creates_simulation() -> None:
         (),
         {
             "list_geographic_areas": FakeListAreasUseCase(_sample_area()),
+            "get_geographic_area": FakeGetGeographicAreaUseCase(_sample_area()),
             "create_simulation": FakeCreateSimulationUseCase(),
             "get_simulation": FakeGetSimulationUseCase(),
             "list_simulation_steps": FakeListSimulationStepsUseCase(),
@@ -125,6 +135,7 @@ def test_api_lists_areas_and_creates_simulation() -> None:
     client = TestClient(app_module.app)
 
     list_response = client.get("/geographic-areas")
+    topology_response = client.get("/geographic-areas/roma-norte/topology")
     create_response = client.post("/simulations", json={"area_id": "roma-norte"})
     steps_response = client.get("/simulations/sim-001/steps")
 
@@ -132,6 +143,9 @@ def test_api_lists_areas_and_creates_simulation() -> None:
 
     assert list_response.status_code == 200
     assert list_response.json()[0]["area_id"] == "roma-norte"
+    assert topology_response.status_code == 200
+    assert topology_response.json()["topology"]["edges"][0]["n_cells"] == 1
+    assert topology_response.json()["topology"]["nodes"]["A"]["is_boundary"] is True
     assert create_response.status_code == 201
     assert create_response.json()["simulation_id"] == "sim-001"
     assert steps_response.status_code == 409

@@ -57,6 +57,8 @@ Carga el set por defecto de CDMX:
 python scripts/init_mongo_geodata.py
 ```
 
+El bootstrap reemplaza cada area por `area_id`, por lo que puedes volver a ejecutarlo para actualizar documentos antiguos. La topologia persistida incluye `lanes`, `lane_source` y `allows_lane_change` por cada tramo, datos que el motor usa para simular multiples carriles y posibles cambios de carril.
+
 O carga areas explicitas:
 
 ```bash
@@ -77,10 +79,20 @@ Puntos utiles:
 - OpenAPI: `http://127.0.0.1:8000/openapi.json`
 - Healthcheck: `http://127.0.0.1:8000/health`
 
-### 5. Ejecutar pruebas focalizadas
+### 5. Abrir la mini UI de simulacion
+
+Con Mongo y la API levantados, abre una webapp local de un solo script:
 
 ```bash
-pytest tests/test_nasch_model.py tests/test_use_cases.py tests/test_api_app.py
+python scripts/mini_simulation_ui.py --api-url http://127.0.0.1:8000
+```
+
+La interfaz queda disponible en `http://127.0.0.1:8501`. Permite seleccionar un area geografica, elegir el modelo de simulacion (`continuous` o `classic`), configurar carriles, cambio de carril y semaforos, cargar el grafo discretizado, iniciar una simulacion y observar los vehiculos en vivo por WebSocket.
+
+### 6. Ejecutar pruebas focalizadas
+
+```bash
+pytest tests/test_nasch_model.py tests/test_simulation_extensibility.py tests/test_use_cases.py tests/test_api_app.py
 ```
 
 ## Produccion
@@ -145,8 +157,21 @@ docker compose down -v
 
 - `GET /health`
 - `GET /geographic-areas`
+- `GET /geographic-areas/{area_id}/topology`
 - `POST /simulations`
 - `GET /simulations/{simulation_id}`
 - `POST /simulations/{simulation_id}/cancel`
 - `GET /simulations/{simulation_id}/steps`
 - `WS /simulations/{simulation_id}/ws`
+
+### Parametros utiles de `POST /simulations`
+
+Ademas de `area_id`, el request permite configurar variantes del motor:
+
+- `execution_mode`: `continuous` para spawn/despawn dinamico, o `classic` para mantener solo los vehiculos iniciales.
+- `default_lanes`: numero de carriles por segmento cuando el dato de la topologia no especifica otro valor.
+- `enable_lane_changes`: habilita la politica de cambio de carril del modelo celular.
+- `traffic_light_percentage`: porcentaje de intersecciones validas que reciben semaforo aleatorio, entre `0.0` y `1.0`.
+- `traffic_light_green_steps` y `traffic_light_red_steps`: ciclo de cada semaforo en steps.
+
+Los steps devueltos por REST o WebSocket incluyen `state.cells`, `state.vehicles` con carril/celda/direccion, y `state.traffic_lights` con estado y ciclo para renderizar la UI.

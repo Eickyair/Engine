@@ -68,6 +68,9 @@ class EdgeData:
     n_cells: int
     vmax_cells: int
     geometry_points: List[Coordinates]
+    lanes: int = 1
+    lane_source: str = "default"
+    allows_lane_change: bool = True
 
     def to_dict(self, edge_id: EdgeId) -> Dict[str, Any]:
         return {
@@ -79,6 +82,10 @@ class EdgeData:
             "travel_time_sec": self.travel_time_sec,
             "n_cells": self.n_cells,
             "vmax_cells": self.vmax_cells,
+            "lanes": self.lanes,
+            "lane_source": self.lane_source,
+            "allows_lane_change": self.allows_lane_change,
+            "direction": [edge_id[0], edge_id[1]],
             "geometry_points": [list(point) for point in self.geometry_points],
         }
 
@@ -91,6 +98,9 @@ class EdgeData:
             n_cells=int(payload["n_cells"]),
             vmax_cells=int(payload["vmax_cells"]),
             geometry_points=[(float(x), float(y)) for x, y in payload["geometry_points"]],
+            lanes=max(1, int(payload.get("lanes", 1))),
+            lane_source=str(payload.get("lane_source", "default")),
+            allows_lane_change=bool(payload.get("allows_lane_change", True)),
         )
 
 
@@ -133,6 +143,7 @@ class GeographicArea:
     name: str
     topology: TopologyData
     created_at: datetime = field(default_factory=utc_now)
+    schema_version: int = 2
 
     @property
     def node_count(self) -> int:
@@ -147,6 +158,7 @@ class GeographicArea:
             "area_id": self.area_id,
             "name": self.name,
             "created_at": self.created_at,
+            "schema_version": self.schema_version,
             "topology": self.topology.to_dict(),
         }
 
@@ -156,6 +168,7 @@ class GeographicArea:
             area_id=str(payload["area_id"]),
             name=str(payload["name"]),
             created_at=payload.get("created_at") or utc_now(),
+            schema_version=int(payload.get("schema_version", 1)),
             topology=TopologyData.from_dict(payload["topology"]),
         )
 
@@ -164,6 +177,69 @@ class SimulationStatus(str, Enum):
     RUNNING = "running"
     FINISHED = "finished"
     CANCELLED = "cancelled"
+
+
+class SimulationExecutionMode(str, Enum):
+    CLASSIC = "classic"
+    CONTINUOUS = "continuous"
+
+
+class TrafficLightState(str, Enum):
+    GREEN = "green"
+    RED = "red"
+
+
+@dataclass(frozen=True)
+class TrafficLightCycle:
+    green_steps: int
+    red_steps: int
+
+    def state_at(self, step_number: int) -> TrafficLightState:
+        if self.red_steps <= 0:
+            return TrafficLightState.GREEN
+        total = max(1, self.green_steps + self.red_steps)
+        position = step_number % total
+        if position < self.green_steps:
+            return TrafficLightState.GREEN
+        return TrafficLightState.RED
+
+    def to_dict(self) -> Dict[str, int]:
+        return {"green_steps": self.green_steps, "red_steps": self.red_steps}
+
+    @classmethod
+    def from_dict(cls, payload: Dict[str, Any]) -> "TrafficLightCycle":
+        return cls(
+            green_steps=max(1, int(payload.get("green_steps", 10))),
+            red_steps=max(0, int(payload.get("red_steps", 10))),
+        )
+
+
+@dataclass(frozen=True)
+class TrafficLight:
+    node_id: NodeId
+    cycle: TrafficLightCycle
+    applies_to: List[NodeId]
+
+    def state_at(self, step_number: int) -> TrafficLightState:
+        return self.cycle.state_at(step_number)
+
+    def to_dict(self, step_number: int | None = None) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "node_id": self.node_id,
+            "applies_to": list(self.applies_to),
+            "cycle": self.cycle.to_dict(),
+        }
+        if step_number is not None:
+            payload["state"] = self.state_at(step_number).value
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Dict[str, Any]) -> "TrafficLight":
+        return cls(
+            node_id=str(payload["node_id"]),
+            applies_to=[str(node_id) for node_id in payload.get("applies_to", [])],
+            cycle=TrafficLightCycle.from_dict(payload.get("cycle", {})),
+        )
 
 
 @dataclass(frozen=True)
@@ -175,6 +251,12 @@ class SimulationConfig:
     noise_prob: float
     seed: int
     tick_interval_ms: int
+    execution_mode: SimulationExecutionMode = SimulationExecutionMode.CONTINUOUS
+    default_lanes: int = 1
+    traffic_light_percentage: float = 0.0
+    traffic_light_green_steps: int = 10
+    traffic_light_red_steps: int = 10
+    enable_lane_changes: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -185,6 +267,12 @@ class SimulationConfig:
             "noise_prob": self.noise_prob,
             "seed": self.seed,
             "tick_interval_ms": self.tick_interval_ms,
+            "execution_mode": self.execution_mode.value,
+            "default_lanes": self.default_lanes,
+            "traffic_light_percentage": self.traffic_light_percentage,
+            "traffic_light_green_steps": self.traffic_light_green_steps,
+            "traffic_light_red_steps": self.traffic_light_red_steps,
+            "enable_lane_changes": self.enable_lane_changes,
         }
 
     @classmethod
@@ -197,6 +285,14 @@ class SimulationConfig:
             noise_prob=float(payload["noise_prob"]),
             seed=int(payload["seed"]),
             tick_interval_ms=int(payload["tick_interval_ms"]),
+            execution_mode=SimulationExecutionMode(
+                payload.get("execution_mode", SimulationExecutionMode.CONTINUOUS.value)
+            ),
+            default_lanes=max(1, int(payload.get("default_lanes", 1))),
+            traffic_light_percentage=float(payload.get("traffic_light_percentage", 0.0)),
+            traffic_light_green_steps=max(1, int(payload.get("traffic_light_green_steps", 10))),
+            traffic_light_red_steps=max(0, int(payload.get("traffic_light_red_steps", 10))),
+            enable_lane_changes=bool(payload.get("enable_lane_changes", False)),
         )
 
 
@@ -207,6 +303,7 @@ class Vehicle:
     edge_idx: int = 0
     cell_pos: int = 0
     velocity: int = 0
+    lane: int = 0
     distance_traveled_m: float = 0.0
     wait_ticks: int = 0
 
@@ -231,6 +328,10 @@ class VehicleSnapshot:
     velocity: int
     speed_kph: float
     wait_ticks: int
+    lane: int = 0
+    cell_position: int = 0
+    direction: Tuple[NodeId, NodeId] | None = None
+    is_changing_lane: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -241,6 +342,10 @@ class VehicleSnapshot:
             "velocity": self.velocity,
             "speed_kph": self.speed_kph,
             "wait_ticks": self.wait_ticks,
+            "lane": self.lane,
+            "cell_position": self.cell_position,
+            "direction": list(self.direction or (self.edge[0], self.edge[1])),
+            "is_changing_lane": self.is_changing_lane,
         }
 
     @classmethod
@@ -253,6 +358,74 @@ class VehicleSnapshot:
             velocity=int(payload["velocity"]),
             speed_kph=float(payload["speed_kph"]),
             wait_ticks=int(payload["wait_ticks"]),
+            lane=int(payload.get("lane", 0)),
+            cell_position=int(payload.get("cell_position", 0)),
+            direction=(
+                str(payload.get("direction", payload["edge"])[0]),
+                str(payload.get("direction", payload["edge"])[1]),
+            ),
+            is_changing_lane=bool(payload.get("is_changing_lane", False)),
+        )
+
+
+@dataclass(frozen=True)
+class CellSnapshot:
+    edge: EdgeId
+    cell_position: int
+    lane_count: int
+    direction: Tuple[NodeId, NodeId]
+    vehicles: List[int]
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "edge": list(self.edge),
+            "cell_position": self.cell_position,
+            "lane_count": self.lane_count,
+            "direction": list(self.direction),
+            "vehicles": list(self.vehicles),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Dict[str, Any]) -> "CellSnapshot":
+        edge = (str(payload["edge"][0]), str(payload["edge"][1]), int(payload["edge"][2]))
+        direction = payload.get("direction", payload["edge"])
+        return cls(
+            edge=edge,
+            cell_position=int(payload["cell_position"]),
+            lane_count=max(1, int(payload["lane_count"])),
+            direction=(str(direction[0]), str(direction[1])),
+            vehicles=[int(vehicle_id) for vehicle_id in payload.get("vehicles", [])],
+        )
+
+
+@dataclass(frozen=True)
+class TrafficLightSnapshot:
+    node_id: NodeId
+    x: float
+    y: float
+    state: TrafficLightState
+    applies_to: List[NodeId]
+    cycle: TrafficLightCycle
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "node_id": self.node_id,
+            "x": self.x,
+            "y": self.y,
+            "state": self.state.value,
+            "applies_to": list(self.applies_to),
+            "cycle": self.cycle.to_dict(),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Dict[str, Any]) -> "TrafficLightSnapshot":
+        return cls(
+            node_id=str(payload["node_id"]),
+            x=float(payload["x"]),
+            y=float(payload["y"]),
+            state=TrafficLightState(payload["state"]),
+            applies_to=[str(node_id) for node_id in payload.get("applies_to", [])],
+            cycle=TrafficLightCycle.from_dict(payload.get("cycle", {})),
         )
 
 
@@ -263,6 +436,8 @@ class SimulationState:
     total_vehicles: int
     active_vehicles: int
     density: float
+    cells: List[CellSnapshot] = field(default_factory=list)
+    traffic_lights: List[TrafficLightSnapshot] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -271,6 +446,8 @@ class SimulationState:
             "total_vehicles": self.total_vehicles,
             "active_vehicles": self.active_vehicles,
             "density": self.density,
+            "cells": [cell.to_dict() for cell in self.cells],
+            "traffic_lights": [traffic_light.to_dict() for traffic_light in self.traffic_lights],
         }
 
     @classmethod
@@ -281,6 +458,11 @@ class SimulationState:
             total_vehicles=int(payload["total_vehicles"]),
             active_vehicles=int(payload["active_vehicles"]),
             density=float(payload["density"]),
+            cells=[CellSnapshot.from_dict(cell) for cell in payload.get("cells", [])],
+            traffic_lights=[
+                TrafficLightSnapshot.from_dict(traffic_light)
+                for traffic_light in payload.get("traffic_lights", [])
+            ],
         )
 
 

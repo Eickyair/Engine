@@ -9,6 +9,7 @@ from ..application.use_cases import (
     BootstrapGeographicAreasUseCase,
     CancelSimulationUseCase,
     CreateSimulationUseCase,
+    GetGeographicAreaUseCase,
     GetSimulationUseCase,
     ListGeographicAreasUseCase,
     ListSimulationStepsUseCase,
@@ -19,7 +20,10 @@ from ..infrastructure import (
     InProcessSimulationRuntime,
     MongoGeographicAreaRepository,
     MongoSimulationRepository,
+    NagelCellularModel,
     OSMnxGeographicAreaSource,
+    RandomTrafficLightProvider,
+    ShortestPathRouteProvider,
     close_mongo_client,
 )
 
@@ -28,6 +32,7 @@ from ..infrastructure import (
 class Container:
     bootstrap_geographic_areas: BootstrapGeographicAreasUseCase
     list_geographic_areas: ListGeographicAreasUseCase
+    get_geographic_area: GetGeographicAreaUseCase
     create_simulation: CreateSimulationUseCase
     get_simulation: GetSimulationUseCase
     list_simulation_steps: ListSimulationStepsUseCase
@@ -49,6 +54,9 @@ def get_container() -> Container:
     run_simulation = RunSimulationUseCase(
         repository=simulation_repository,
         event_bus=event_bus,
+        route_provider=ShortestPathRouteProvider(),
+        cellular_model=NagelCellularModel(allow_lane_changes=True),
+        traffic_light_provider=RandomTrafficLightProvider(),
     )
     return Container(
         bootstrap_geographic_areas=BootstrapGeographicAreasUseCase(
@@ -56,6 +64,7 @@ def get_container() -> Container:
             repository=area_repository,
         ),
         list_geographic_areas=ListGeographicAreasUseCase(repository=area_repository),
+        get_geographic_area=GetGeographicAreaUseCase(repository=area_repository),
         create_simulation=CreateSimulationUseCase(
             area_repository=area_repository,
             simulation_repository=simulation_repository,

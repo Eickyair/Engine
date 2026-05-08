@@ -36,8 +36,10 @@ def main() -> None:
     )
     areas = use_case.execute(place_names)
     for area in areas:
+        multi_lane_edges = sum(1 for edge in area.topology.edges.values() if edge.lanes > 1)
         print(
-            f"{area.area_id}: {area.name} | nodes={area.node_count} | edges={area.edge_count}"
+            f"{area.area_id}: {area.name} | nodes={area.node_count} | "
+            f"edges={area.edge_count} | multi_lane_edges={multi_lane_edges}"
         )
 
 

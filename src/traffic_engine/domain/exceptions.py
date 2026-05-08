@@ -19,3 +19,11 @@ class SimulationNotReadyError(TrafficEngineError):
 
 class SimulationCancellationError(TrafficEngineError):
     """Raised when a simulation cannot be cancelled."""
+
+
+class SimulationConfigurationError(TrafficEngineError):
+    """Raised when a simulation model configuration is invalid."""
+
+
+class RouteSelectionError(TrafficEngineError):
+    """Raised when no valid topological route can be selected."""

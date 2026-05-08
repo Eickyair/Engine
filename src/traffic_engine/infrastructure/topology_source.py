@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, cast
 
 import networkx as nx
 import osmnx as ox
@@ -30,6 +30,31 @@ def _parse_speed_kph(raw_value: Any) -> float:
         except ValueError:
             return 30.0
     return 30.0
+
+
+def _parse_lanes(raw_value: Any, default: int = 1) -> tuple[int, str]:
+    if raw_value is None:
+        return default, "default"
+    if isinstance(raw_value, (int, float)):
+        return max(1, int(raw_value)), "osm"
+    if isinstance(raw_value, list):
+        parsed = [_parse_lanes(value, default=default)[0] for value in raw_value if value is not None]
+        if parsed:
+            return max(parsed), "osm"
+        return default, "default"
+    if isinstance(raw_value, str):
+        matches = re.findall(r"\d+(?:\.\d+)?", raw_value)
+        if matches:
+            return max(1, int(max(float(match) for match in matches))), "osm"
+    return default, "default"
+
+
+def _edge_lanes(data: dict[str, Any]) -> tuple[int, str]:
+    for key in ("lanes", "lanes:forward", "lanes:backward"):
+        lanes, source = _parse_lanes(data.get(key))
+        if source == "osm":
+            return lanes, key
+    return 1, "default"
 
 
 def _speed_to_vmax(speed_kph: float) -> int:
@@ -67,7 +92,7 @@ class OSMnxGeographicAreaSource:
         if graph.number_of_nodes() == 0:
             return graph
         component = max(nx.strongly_connected_components(graph), key=len)
-        return graph.subgraph(component).copy()
+        return cast(nx.MultiDiGraph, graph.subgraph(component).copy())
 
     def _to_topology(self, graph: nx.MultiDiGraph) -> TopologyData:
         nodes = {
@@ -89,6 +114,7 @@ class OSMnxGeographicAreaSource:
         edges = {}
         for u, v, key, data in graph.edges(keys=True, data=True):
             speed_kph = _parse_speed_kph(data.get("speed_kph", data.get("maxspeed", 30.0)))
+            lanes, lane_source = _edge_lanes(data)
             length_m = float(data.get("length", 50.0))
             travel_time_sec = float(data.get("travel_time", length_m / max(speed_kph / 3.6, 1e-6)))
             geometry = data.get("geometry")
@@ -106,5 +132,8 @@ class OSMnxGeographicAreaSource:
                 n_cells=max(1, int(length_m / CELL_SIZE_M)),
                 vmax_cells=_speed_to_vmax(speed_kph),
                 geometry_points=points,
+                lanes=lanes,
+                lane_source=lane_source,
+                allows_lane_change=lanes > 1,
             )
         return TopologyData(nodes=nodes, edges=edges, bbox=bbox)

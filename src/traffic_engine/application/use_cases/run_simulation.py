@@ -6,7 +6,9 @@ import asyncio
 from asyncio import Event
 from typing import Any
 
+from ...domain.abstractions import CellularModel, RouteProvider, TrafficLightProvider
 from ...domain.models import GeographicArea, SimulationRecord, SimulationStatus, SimulationStep
+from ...domain.simulation_builder import SimulationModelBuilder
 from ...domain.simulation import NaSchSimulationModel
 from ..ports import LiveEventBus, SimulationRepository
 
@@ -16,9 +18,15 @@ class RunSimulationUseCase:
         self,
         repository: SimulationRepository,
         event_bus: LiveEventBus,
+        route_provider: RouteProvider,
+        cellular_model: CellularModel,
+        traffic_light_provider: TrafficLightProvider | None = None,
     ) -> None:
         self.repository = repository
         self.event_bus = event_bus
+        self.route_provider = route_provider
+        self.cellular_model = cellular_model
+        self.traffic_light_provider = traffic_light_provider
 
     async def execute(
         self,
@@ -26,8 +34,31 @@ class RunSimulationUseCase:
         area: GeographicArea,
         cancel_event: Event,
     ) -> None:
-        model = NaSchSimulationModel(seed=record.config.seed)
-        model.reset(topology=area.topology, config=record.config)
+        definition = (
+            SimulationModelBuilder(record.config)
+            .with_execution_mode(record.config.execution_mode)
+            .with_route_provider(self.route_provider)
+            .with_cellular_model(self.cellular_model)
+            .with_traffic_light_provider(
+                self.traffic_light_provider
+                if record.config.traffic_light_percentage > 0.0
+                else None
+            )
+            .with_default_lanes(record.config.default_lanes)
+            .build()
+        )
+        traffic_lights = (
+            definition.traffic_light_provider.provide(area.topology, definition.config)
+            if definition.traffic_light_provider is not None
+            else []
+        )
+        model = NaSchSimulationModel(
+            seed=definition.config.seed,
+            route_provider=definition.route_provider,
+            cellular_model=definition.cellular_model,
+            traffic_lights=traffic_lights,
+        )
+        model.reset(topology=area.topology, config=definition.config)
         final_status = SimulationStatus.FINISHED
 
         try:

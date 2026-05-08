@@ -10,17 +10,23 @@ from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconn
 from ..domain.exceptions import (
     GeographicAreaNotFoundError,
     SimulationCancellationError,
+    SimulationConfigurationError,
     SimulationNotFoundError,
     SimulationNotReadyError,
 )
+from ..domain.models import SimulationExecutionMode
 from .dependencies import Container, get_container
 from .schemas import (
     BoundingBoxResponse,
     CancelSimulationResponse,
     CreateSimulationRequest,
+    GeographicAreaTopologyResponse,
     GeographicAreaSummaryResponse,
     SimulationRecordResponse,
     SimulationStepResponse,
+    TopologyEdgeResponse,
+    TopologyNodeResponse,
+    TopologyResponse,
 )
 
 
@@ -33,6 +39,27 @@ def _record_response(record: Any) -> SimulationRecordResponse:
         created_at=record.created_at,
         updated_at=record.updated_at,
         config=record.config.to_dict(),
+    )
+
+
+def _topology_response(area: Any) -> GeographicAreaTopologyResponse:
+    return GeographicAreaTopologyResponse(
+        area_id=area.area_id,
+        name=area.name,
+        created_at=area.created_at,
+        node_count=area.node_count,
+        edge_count=area.edge_count,
+        topology=TopologyResponse(
+            nodes={
+                node_id: TopologyNodeResponse(**node.to_dict())
+                for node_id, node in area.topology.nodes.items()
+            },
+            edges=[
+                TopologyEdgeResponse(**edge.to_dict(edge_id))
+                for edge_id, edge in area.topology.edges.items()
+            ],
+            bbox=BoundingBoxResponse(**area.topology.bbox.to_dict()),
+        ),
     )
 
 
@@ -66,6 +93,20 @@ def create_app() -> FastAPI:
             for area in areas
         ]
 
+    @app.get(
+        "/geographic-areas/{area_id}/topology",
+        response_model=GeographicAreaTopologyResponse,
+    )
+    async def get_geographic_area_topology(
+        area_id: str,
+        container: Container = Depends(get_container),
+    ) -> GeographicAreaTopologyResponse:
+        try:
+            area = container.get_geographic_area.execute(area_id)
+        except GeographicAreaNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return _topology_response(area)
+
     @app.post(
         "/simulations",
         response_model=SimulationRecordResponse,
@@ -85,9 +126,17 @@ def create_app() -> FastAPI:
                 noise_prob=request.noise_prob,
                 seed=request.seed,
                 tick_interval_ms=request.tick_interval_ms,
+                execution_mode=SimulationExecutionMode(request.execution_mode),
+                default_lanes=request.default_lanes,
+                traffic_light_percentage=request.traffic_light_percentage,
+                traffic_light_green_steps=request.traffic_light_green_steps,
+                traffic_light_red_steps=request.traffic_light_red_steps,
+                enable_lane_changes=request.enable_lane_changes,
             )
         except GeographicAreaNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except SimulationConfigurationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         return _record_response(record)
 
     @app.get("/simulations/{simulation_id}", response_model=SimulationRecordResponse)
