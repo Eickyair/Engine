@@ -306,6 +306,8 @@ class Vehicle:
     lane: int = 0
     distance_traveled_m: float = 0.0
     wait_ticks: int = 0
+    is_changing_lane: bool = False
+    lane_change_ticks_remaining: int = 0
 
     @property
     def current_edge(self) -> EdgeId:

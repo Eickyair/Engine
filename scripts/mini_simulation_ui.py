@@ -232,9 +232,48 @@ INDEX_HTML = r"""<!doctype html>
       padding: 3px 6px;
     }
 
-    .vehicle-marker {
+    .vehicle-icon {
+      width: 28px;
+      height: 18px;
+      position: relative;
       border: 2px solid #ffffff;
-      box-shadow: 0 2px 8px rgba(28, 36, 48, 0.22);
+      border-radius: 6px 8px 8px 6px;
+      background: var(--vehicle-color, #1570ef);
+      box-shadow: 0 2px 8px rgba(28, 36, 48, 0.28);
+      transform-origin: center;
+    }
+
+    .vehicle-icon::before {
+      content: "";
+      position: absolute;
+      left: 7px;
+      top: 3px;
+      width: 10px;
+      height: 5px;
+      border-radius: 3px 5px 5px 3px;
+      background: rgba(255, 255, 255, 0.72);
+    }
+
+    .vehicle-icon::after {
+      content: "";
+      position: absolute;
+      left: 5px;
+      right: 5px;
+      bottom: -5px;
+      height: 5px;
+      border-radius: 999px;
+      background:
+        radial-gradient(circle at 0 50%, #1c2430 0 3px, transparent 3.2px),
+        radial-gradient(circle at 100% 50%, #1c2430 0 3px, transparent 3.2px);
+    }
+
+    .vehicle-icon.stopped {
+      filter: saturate(0.72) brightness(0.9);
+    }
+
+    .vehicle-icon.changing-lane {
+      border-color: #f79009;
+      box-shadow: 0 0 0 3px rgba(247, 144, 9, 0.32), 0 2px 10px rgba(28, 36, 48, 0.3);
     }
 
     .hint {
@@ -405,6 +444,7 @@ INDEX_HTML = r"""<!doctype html>
     let edgeLayer = null;
     let vehicleLayer = null;
     let trafficLightLayer = null;
+    let edgeByKey = new Map();
 
     function setStatus(text, mode = "") {
       $("statusText").textContent = text;
@@ -495,6 +535,75 @@ INDEX_HTML = r"""<!doctype html>
       return [point[1], point[0]];
     }
 
+    function edgeKey(edgeParts) {
+      return `${edgeParts[0]}|${edgeParts[1]}|${edgeParts[2]}`;
+    }
+
+    function rebuildEdgeIndex() {
+      edgeByKey = new Map();
+      if (!topology) return;
+      for (const edge of topology.topology.edges) {
+        edgeByKey.set(edgeKey([edge.u, edge.v, edge.key]), edge);
+      }
+    }
+
+    function nearestSegment(points, vehicle) {
+      if (points.length < 2) return null;
+      let bestIndex = 0;
+      let bestDistance = Number.POSITIVE_INFINITY;
+      for (let index = 0; index < points.length - 1; index += 1) {
+        const start = points[index];
+        const end = points[index + 1];
+        const midX = (start[0] + end[0]) / 2;
+        const midY = (start[1] + end[1]) / 2;
+        const distance = Math.hypot(vehicle.x - midX, vehicle.y - midY);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestIndex = index;
+        }
+      }
+      return [points[bestIndex], points[bestIndex + 1]];
+    }
+
+    function vehicleLaneLatLng(vehicle) {
+      if (!Array.isArray(vehicle.edge)) return [vehicle.y, vehicle.x];
+      const edge = edgeByKey.get(edgeKey(vehicle.edge));
+      if (!edge || !edge.geometry_points || edge.geometry_points.length < 2) return [vehicle.y, vehicle.x];
+      const segment = nearestSegment(edge.geometry_points, vehicle);
+      if (!segment) return [vehicle.y, vehicle.x];
+      const [start, end] = segment;
+      const dx = end[0] - start[0];
+      const dy = end[1] - start[1];
+      const length = Math.hypot(dx, dy) || 1;
+      const normalX = -dy / length;
+      const normalY = dx / length;
+      const configuredLanes = activeModelConfig ? Number(activeModelConfig.default_lanes || 1) : 1;
+      const laneCount = Math.max(1, Number(edge.lanes || 1), configuredLanes, Number(vehicle.lane || 0) + 1);
+      const lane = Math.max(0, Math.min(Number(vehicle.lane || 0), laneCount - 1));
+      const centeredLane = lane - ((laneCount - 1) / 2);
+      const offset = centeredLane * 0.000035;
+      return [vehicle.y + normalY * offset, vehicle.x + normalX * offset];
+    }
+
+    function vehicleColor(vehicle) {
+      const colors = ["#1570ef", "#079455", "#dc6803", "#7a5af8", "#c11574"];
+      const id = Number(vehicle.id || 0);
+      return colors[Math.abs(id) % colors.length];
+    }
+
+    function vehicleIcon(vehicle, changingLane, stopped) {
+      const classes = ["vehicle-icon"];
+      if (changingLane) classes.push("changing-lane");
+      if (stopped) classes.push("stopped");
+      return L.divIcon({
+        className: "vehicle-div-icon",
+        html: `<div class="${classes.join(" ")}" style="--vehicle-color: ${vehicleColor(vehicle)}"></div>`,
+        iconSize: [28, 23],
+        iconAnchor: [14, 11],
+        tooltipAnchor: [0, -12],
+      });
+    }
+
     function topologyBounds() {
       const box = topology.topology.bbox;
       return L.latLngBounds([box.min_y, box.min_x], [box.max_y, box.max_x]);
@@ -551,16 +660,15 @@ INDEX_HTML = r"""<!doctype html>
 
       for (const vehicle of vehicles) {
         const stopped = vehicle.velocity === 0;
-        const fillColor = stopped ? "#d92d20" : vehicle.speed_kph > 25 ? "#079455" : "#1570ef";
-        L.circleMarker([vehicle.y, vehicle.x], {
+        const changingLane = vehicle.is_changing_lane === true;
+        L.marker(vehicleLaneLatLng(vehicle), {
           pane: "vehiclesPane",
-          radius: stopped ? 6.5 : 5.5,
-          color: "#ffffff",
-          weight: 2,
-          fillColor,
-          fillOpacity: 0.95,
-          className: "vehicle-marker",
-        }).addTo(vehicleLayer);
+          icon: vehicleIcon(vehicle, changingLane, stopped),
+        })
+          .bindTooltip(`Vehiculo ${vehicle.id} | carril ${(vehicle.lane || 0) + 1}${changingLane ? " | cambio de carril" : ""}`, {
+            sticky: true,
+          })
+          .addTo(vehicleLayer);
       }
     }
 
@@ -604,6 +712,7 @@ INDEX_HTML = r"""<!doctype html>
 
     async function loadTopology(areaId) {
       topology = await apiFetch(`/geographic-areas/${encodeURIComponent(areaId)}/topology`);
+      rebuildEdgeIndex();
       vehicles = [];
       trafficLights = [];
       metrics = null;
@@ -722,6 +831,12 @@ INDEX_HTML = r"""<!doctype html>
       ["executionMode", "defaultLanes", "trafficLightGreen", "trafficLightRed", "trafficLightPercentage", "enableLaneChanges"].forEach((id) => {
         $(id).addEventListener("input", updateModelPreview);
         $(id).addEventListener("change", updateModelPreview);
+      });
+      $("enableLaneChanges").addEventListener("change", () => {
+        if ($("enableLaneChanges").checked && numberValue("defaultLanes") < 2) {
+          $("defaultLanes").value = "2";
+        }
+        updateModelPreview();
       });
       window.addEventListener("resize", () => map && map.invalidateSize());
     }

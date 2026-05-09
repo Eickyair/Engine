@@ -11,6 +11,7 @@ from traffic_engine.domain.models import (
     SimulationConfig,
     SimulationExecutionMode,
     TopologyData,
+    Vehicle,
 )
 from traffic_engine.domain.simulation import NaSchSimulationModel
 from traffic_engine.domain.simulation_builder import SimulationModelBuilder
@@ -20,6 +21,24 @@ from traffic_engine.infrastructure.providers import (
     ShortestPathRouteProvider,
 )
 from traffic_engine.infrastructure.topology_source import OSMnxGeographicAreaSource
+
+
+class AlwaysChangeLaneModel:
+    supports_lane_changes = True
+
+    def resolve_lane(self, vehicle: Vehicle, available_lanes: int, gap_ahead: int) -> int:
+        return min(available_lanes - 1, vehicle.lane + 1)
+
+    def resolve_velocity(
+        self,
+        vehicle: Vehicle,
+        max_velocity: int,
+        gap_ahead: int,
+        red_light_gap: int | None,
+        random: Random,
+        noise_prob: float,
+    ) -> int:
+        return 0
 
 
 def _intersection_topology() -> TopologyData:
@@ -36,6 +55,22 @@ def _intersection_topology() -> TopologyData:
             ("D", "B", 0): EdgeData(10.0, 30.0, 1.0, 4, 2, [(1.0, 1.0), (1.0, 0.0)]),
         },
         bbox=BoundingBox(min_x=0.0, max_x=2.0, min_y=0.0, max_y=1.0),
+    )
+
+
+def _parallel_edge_topology() -> TopologyData:
+    return TopologyData(
+        nodes={
+            "A": NodeData(x=0.0, y=0.0, is_boundary=True),
+            "B": NodeData(x=1.0, y=0.0, is_boundary=False),
+            "C": NodeData(x=2.0, y=0.0, is_boundary=True),
+        },
+        edges={
+            ("A", "B", 0): EdgeData(10.0, 30.0, 1.0, 4, 2, [(0.0, 0.0), (1.0, 0.0)], lanes=1),
+            ("A", "B", 1): EdgeData(10.0, 30.0, 1.0, 4, 2, [(0.0, 0.0), (1.0, 0.001)], lanes=3),
+            ("B", "C", 0): EdgeData(10.0, 30.0, 1.0, 4, 2, [(1.0, 0.0), (2.0, 0.0)]),
+        },
+        bbox=BoundingBox(min_x=0.0, max_x=2.0, min_y=0.0, max_y=0.001),
     )
 
 
@@ -73,6 +108,22 @@ def test_route_provider_reports_grid_without_traversable_cells() -> None:
 
     with pytest.raises(RouteSelectionError):
         ShortestPathRouteProvider().choose_route(topology, Random(1))
+
+
+def test_route_provider_can_choose_parallel_edge_variants_for_same_street() -> None:
+    topology = _parallel_edge_topology()
+    provider = ShortestPathRouteProvider()
+
+    selected_keys = {
+        provider._select_parallel_edge_variants(
+            topology,
+            [("A", "B", 0), ("B", "C", 0)],
+            Random(seed),
+        )[0][2]
+        for seed in range(20)
+    }
+
+    assert selected_keys == {0, 1}
 
 
 def test_builder_requires_mode_and_validates_lane_configuration() -> None:
@@ -119,6 +170,60 @@ def test_classic_mode_does_not_spawn_after_initialization_and_emits_ui_payload()
     assert state.traffic_lights
     assert state.vehicles[0].lane >= 0
     assert state.vehicles[0].direction is not None
+
+
+def test_nagel_cellular_model_changes_lane_when_gap_is_low() -> None:
+    model = NagelCellularModel(allow_lane_changes=True)
+    vehicle = Vehicle(vid=1, route=[("A", "B", 0)], lane=0)
+
+    assert model.resolve_lane(vehicle, available_lanes=2, gap_ahead=2) == 0
+    assert model.resolve_lane(vehicle, available_lanes=2, gap_ahead=1) == 1
+
+
+def test_lane_change_is_marked_in_vehicle_snapshot() -> None:
+    topology = _intersection_topology()
+    config = _config(
+        execution_mode=SimulationExecutionMode.CLASSIC,
+        initial_vehicles=0,
+        max_vehicles=2,
+        default_lanes=2,
+        enable_lane_changes=True,
+    )
+    model = NaSchSimulationModel(
+        seed=config.seed,
+        cellular_model=AlwaysChangeLaneModel(),
+    )
+    model.reset(topology=topology, config=config)
+    route = [("A", "B", 0), ("B", "C", 0)]
+    model._vehicles[1] = Vehicle(vid=1, route=route, cell_pos=0, lane=0)
+    model._edge_cells[("A", "B", 0)][0][0] = 1
+
+    state, _, _ = model.step()
+    next_state, _, _ = model.step()
+
+    assert state.vehicles[0].lane == 1
+    assert state.vehicles[0].is_changing_lane is True
+    assert next_state.vehicles[0].lane == 1
+    assert next_state.vehicles[0].is_changing_lane is True
+
+
+def test_spawn_favors_parallel_lanes_before_deeper_cells() -> None:
+    topology = _intersection_topology()
+    config = _config(
+        execution_mode=SimulationExecutionMode.CLASSIC,
+        initial_vehicles=0,
+        max_vehicles=2,
+        default_lanes=2,
+    )
+    model = NaSchSimulationModel(seed=config.seed)
+    model.reset(topology=topology, config=config)
+
+    first_lane, first_position = model._first_free_spawn_cell(("A", "B", 0))
+    model._edge_cells[("A", "B", 0)][first_lane][first_position] = 1
+    second_lane, second_position = model._first_free_spawn_cell(("A", "B", 0))
+
+    assert (first_lane, first_position) == (0, 0)
+    assert (second_lane, second_position) == (1, 0)
 
 
 def test_edge_lane_metadata_round_trips_for_storage() -> None:

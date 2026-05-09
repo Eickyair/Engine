@@ -56,7 +56,7 @@ class ShortestPathRouteProvider:
             origin, destination = random.sample(boundary_nodes, 2)
             route = self._shortest_edge_path(topology, origin, destination)
             if route:
-                return route
+                return self._select_parallel_edge_variants(topology, route, random)
         raise RouteSelectionError("No reachable origin/destination pair could be selected.")
 
     def _shortest_edge_path(
@@ -98,13 +98,41 @@ class ShortestPathRouteProvider:
         route.reverse()
         return route
 
+    def _select_parallel_edge_variants(
+        self,
+        topology: TopologyData,
+        route: list[EdgeId],
+        random: Random,
+    ) -> list[EdgeId]:
+        return [
+            self._choose_parallel_edge(topology, edge_id, random)
+            for edge_id in route
+        ]
+
+    def _choose_parallel_edge(
+        self,
+        topology: TopologyData,
+        edge_id: EdgeId,
+        random: Random,
+    ) -> EdgeId:
+        origin, destination, _ = edge_id
+        candidates = [
+            candidate_id
+            for candidate_id in topology.edges
+            if candidate_id[0] == origin and candidate_id[1] == destination
+        ]
+        if len(candidates) <= 1:
+            return edge_id
+        weights = [max(1, topology.edges[candidate_id].lanes) for candidate_id in candidates]
+        return random.choices(candidates, weights=weights, k=1)[0]
+
 
 class NagelCellularModel:
     def __init__(self, allow_lane_changes: bool = False) -> None:
         self.supports_lane_changes = allow_lane_changes
 
     def resolve_lane(self, vehicle: Vehicle, available_lanes: int, gap_ahead: int) -> int:
-        if not self.supports_lane_changes or available_lanes < 2 or gap_ahead > 0:
+        if not self.supports_lane_changes or available_lanes < 2 or gap_ahead > 1:
             return vehicle.lane
         return min(available_lanes - 1, vehicle.lane + 1)
 
