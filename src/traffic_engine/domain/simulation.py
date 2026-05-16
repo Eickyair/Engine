@@ -56,6 +56,7 @@ class NaSchSimulationModel:
         self._step_number = 0
         self._next_vehicle_id = 1
         self._last_removed = 0
+        self._prev_vehicle_positions: Dict[int, tuple[float, float]] = {}
 
     def reset(self, topology: TopologyData, config: SimulationConfig) -> SimulationState:
         self._topology = topology
@@ -78,6 +79,7 @@ class NaSchSimulationModel:
         self._step_number = 0
         self._next_vehicle_id = 1
         self._last_removed = 0
+        self._prev_vehicle_positions = {}
         self._spawn_until(config.initial_vehicles)
         return self._build_state()
 
@@ -164,7 +166,7 @@ class NaSchSimulationModel:
         if self._config.execution_mode == SimulationExecutionMode.CONTINUOUS:
             self._spawn_from_rate()
         state = self._build_state()
-        metrics = self._build_metrics(speeds=speeds)
+        metrics = self._build_metrics(speeds=speeds, state=state)
         done = self._step_number >= self._config.max_steps
         return state, metrics, done
 
@@ -343,13 +345,29 @@ class NaSchSimulationModel:
             traffic_lights=self._build_traffic_light_snapshots(),
         )
 
-    def _build_metrics(self, speeds: List[int]) -> SimulationMetrics:
+    def _build_metrics(self, speeds: List[int], state: SimulationState) -> SimulationMetrics:
         total_vehicles = len(self._vehicles)
         avg_speed_cells = sum(speeds) / len(speeds) if speeds else 0.0
         avg_speed_kph = avg_speed_cells * CELL_SIZE_M * 3.6 / TICK_SECONDS
         stopped = sum(1 for vehicle in self._vehicles.values() if vehicle.velocity == 0)
         congestion_ratio = stopped / total_vehicles if total_vehicles else 0.0
         throughput = self._last_removed * 60.0 / TICK_SECONDS
+        heat_density_points = []
+        heat_speed_points = []
+        heat_speed_density_points = []
+        flow_edges: Dict[EdgeId, int] = {}
+        current_positions: Dict[int, tuple[float, float]] = {}
+
+        for vehicle in state.vehicles:
+            heat_density_points.append([vehicle.y, vehicle.x, 1.0])
+            heat_speed_points.append([vehicle.y, vehicle.x, max(1.0, float(vehicle.speed_kph))])
+            heat_speed_density_points.append([vehicle.y, vehicle.x, max(1.0, float(vehicle.speed_kph))])
+            flow_edges[vehicle.edge] = flow_edges.get(vehicle.edge, 0) + 1
+            current_positions[vehicle.id] = (vehicle.x, vehicle.y)
+
+        flow_nodes = self._build_flow_nodes(current_positions)
+        self._prev_vehicle_positions = current_positions
+
         return SimulationMetrics(
             step_number=self._step_number,
             total_vehicles=total_vehicles,
@@ -357,7 +375,77 @@ class NaSchSimulationModel:
             density=self._density(),
             throughput_veh_per_min=throughput,
             congestion_ratio=congestion_ratio,
+            heat_density_points=heat_density_points,
+            heat_speed_points=heat_speed_points,
+            heat_speed_density_points=heat_speed_density_points,
+            flow_nodes=flow_nodes,
+            flow_edges=[
+                {"edge": list(edge_id), "count": count}
+                for edge_id, count in flow_edges.items()
+            ],
         )
+
+    def _build_flow_nodes(
+        self,
+        current_positions: Dict[int, tuple[float, float]],
+    ) -> List[Dict[str, float]]:
+        if self._topology is None:
+            return []
+        boundary_nodes = [
+            node_id for node_id in self._boundary_nodes if node_id in self._topology.nodes
+        ]
+        if not boundary_nodes:
+            return []
+        counts: Dict[str, int] = {node_id: 0 for node_id in boundary_nodes}
+        prev_ids = set(self._prev_vehicle_positions.keys())
+        current_ids = set(current_positions.keys())
+        new_ids = current_ids - prev_ids
+        gone_ids = prev_ids - current_ids
+
+        candidates: List[tuple[float, float]] = []
+        for vid in new_ids:
+            pos = current_positions.get(vid)
+            if pos:
+                candidates.append(pos)
+        for vid in gone_ids:
+            pos = self._prev_vehicle_positions.get(vid)
+            if pos:
+                candidates.append(pos)
+
+        for x, y in candidates:
+            nearest = self._nearest_boundary_node(x, y, boundary_nodes)
+            if nearest is not None:
+                counts[nearest] += 1
+
+        return [
+            {
+                "node_id": node_id,
+                "count": counts[node_id],
+                "x": float(self._topology.nodes[node_id].x),
+                "y": float(self._topology.nodes[node_id].y),
+            }
+            for node_id in boundary_nodes
+        ]
+
+    def _nearest_boundary_node(
+        self,
+        x: float,
+        y: float,
+        boundary_nodes: List[str],
+    ) -> str | None:
+        if self._topology is None:
+            return None
+        best_node = None
+        best_distance = float("inf")
+        for node_id in boundary_nodes:
+            node = self._topology.nodes.get(node_id)
+            if node is None:
+                continue
+            distance = (node.x - x) ** 2 + (node.y - y) ** 2
+            if distance < best_distance:
+                best_distance = distance
+                best_node = node_id
+        return best_node
 
     def _density(self) -> float:
         occupied = sum(

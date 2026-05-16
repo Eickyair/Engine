@@ -171,10 +171,14 @@ def create_app() -> FastAPI:
     )
     async def list_simulation_steps(
         simulation_id: str,
+        include_running: bool = False,
         container: Container = Depends(get_container),
     ) -> list[SimulationStepResponse]:
         try:
-            steps = container.list_simulation_steps.execute(simulation_id)
+            steps = container.list_simulation_steps.execute(
+                simulation_id,
+                allow_running=include_running,
+            )
         except SimulationNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except SimulationNotReadyError as exc:
@@ -189,6 +193,41 @@ def create_app() -> FastAPI:
             )
             for step in steps
         ]
+
+    @app.websocket("/simulations/{simulation_id}/replay")
+    async def simulation_replay_ws(websocket: WebSocket, simulation_id: str) -> None:
+        container = get_container()
+        try:
+            record = container.get_simulation.execute(simulation_id)
+        except SimulationNotFoundError:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+
+        await websocket.accept()
+        try:
+            steps = container.list_simulation_steps.execute(simulation_id, allow_running=True)
+            for step in steps:
+                await websocket.send_json(
+                    jsonable_encoder(
+                        {
+                            "type": "step",
+                            "simulation_id": record.simulation_id,
+                            "status": record.status.value,
+                            "step": step.to_dict(),
+                        }
+                    )
+                )
+            await websocket.send_json(
+                jsonable_encoder(
+                    {
+                        "type": "status",
+                        "simulation_id": record.simulation_id,
+                        "status": record.status.value,
+                    }
+                )
+            )
+        except WebSocketDisconnect:
+            return
 
     @app.websocket("/simulations/{simulation_id}/ws")
     async def simulation_ws(websocket: WebSocket, simulation_id: str) -> None:

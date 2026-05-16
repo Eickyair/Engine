@@ -201,10 +201,97 @@ INDEX_HTML = r"""<!doctype html>
       padding: 18px;
     }
 
+    .metric-section {
+      padding: 0 18px 18px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .metric-banner {
+      display: grid;
+      gap: 6px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fbfcfe;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .metric-banner strong {
+      color: #101828;
+      font-size: 13px;
+    }
+
+    .metric-units {
+      font-size: 12px;
+      color: #667085;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 16px;
+      font-size: 12px;
+      color: #475467;
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .legend-swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      border: 1px solid #d0d5dd;
+    }
+
+    .map-toolbar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 10px;
+      box-shadow: var(--shadow);
+    }
+
+    .map-btn {
+      border: 1px solid var(--line);
+      background: #ffffff;
+      color: #1c2430;
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .map-btn.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #ffffff;
+    }
+
     #map {
       width: 100%;
       height: calc(100vh - 122px);
       min-height: 420px;
+      background: #ffffff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    #metricMap {
+      width: 100%;
+      height: 48vh;
+      min-height: 360px;
       background: #ffffff;
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -423,10 +510,27 @@ INDEX_HTML = r"""<!doctype html>
       <div class="map-wrap">
         <div id="map"></div>
       </div>
+      <div class="metric-section">
+        <div class="metric-banner">
+          <strong id="metricTitle">Mapas de metricas</strong>
+          <div id="metricDescription">Selecciona un mapa para interpretar el comportamiento del trafico.</div>
+          <div class="metric-units" id="metricUnits"></div>
+          <div class="legend" id="metricLegend"></div>
+        </div>
+        <div class="map-toolbar" id="mapToolbar">
+          <button class="map-btn active" data-map="density" type="button">Calor de trafico</button>
+          <button class="map-btn" data-map="speed" type="button">Velocidad por zona</button>
+          <button class="map-btn" data-map="speed-density" type="button">Densidad de velocidades</button>
+          <button class="map-btn" data-map="flow-nodes" type="button">Flujo entrada/salida</button>
+          <button class="map-btn" data-map="flow-edges" type="button">Flujo por arista</button>
+        </div>
+        <div id="metricMap"></div>
+      </div>
     </main>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
   <script>
     const $ = (id) => document.getElementById(id);
 
@@ -441,10 +545,79 @@ INDEX_HTML = r"""<!doctype html>
     let pollTimer = null;
     let activeModelConfig = null;
     let map = null;
+    let metricMap = null;
     let edgeLayer = null;
     let vehicleLayer = null;
     let trafficLightLayer = null;
     let edgeByKey = new Map();
+    let mapMode = "density";
+    let heatDensityLayer = null;
+    let heatSpeedLayer = null;
+    let heatSpeedDensityLayer = null;
+    let flowNodeLayer = null;
+    let flowEdgeLayer = null;
+    let heatDensityPoints = [];
+    let heatSpeedPoints = [];
+    let heatSpeedDensityPoints = [];
+    let edgeUsage = new Map();
+    let boundaryNodes = [];
+    let flowBoundaryCounts = new Map();
+    let prevVehicles = new Map();
+    let lastHeatStep = -1;
+    let lastOverlayStep = -1;
+    const metricMeta = {
+      "density": {
+        title: "Calor de trafico",
+        description: "Muestra donde se concentran mas vehiculos a lo largo de la simulacion.",
+        units: "Unidad: presencia de vehiculos (conteo acumulado)",
+        legend: [
+          { label: "Baja densidad", color: "#e5f0ff" },
+          { label: "Media densidad", color: "#70a1ff" },
+          { label: "Alta densidad", color: "#f59e0b" },
+          { label: "Congestion", color: "#ef4444" },
+        ],
+      },
+      "speed": {
+        title: "Velocidad por zona",
+        description: "Zonas con mayor velocidad promedio aparecen mas claras; zonas lentas, mas oscuras.",
+        units: "Unidad: km/h (promedio por celda)",
+        legend: [
+          { label: "Lento", color: "#ef4444" },
+          { label: "Medio", color: "#f59e0b" },
+          { label: "Rapido", color: "#22c55e" },
+        ],
+      },
+      "speed-density": {
+        title: "Densidad de velocidades",
+        description: "Combina flujo y velocidad: brillo alto indica mucha actividad con movimiento.",
+        units: "Unidad: veh*km/h (intensidad acumulada)",
+        legend: [
+          { label: "Baja actividad", color: "#1e293b" },
+          { label: "Actividad media", color: "#3b82f6" },
+          { label: "Actividad alta", color: "#f59e0b" },
+          { label: "Muy alta", color: "#ef4444" },
+        ],
+      },
+      "flow-nodes": {
+        title: "Flujo entrada/salida",
+        description: "Circulos mas grandes representan nodos con mas entradas o salidas de vehiculos.",
+        units: "Unidad: vehiculos por tick (conteo acumulado)",
+        legend: [
+          { label: "Menor flujo", color: "#93c5fd" },
+          { label: "Mayor flujo", color: "#1d4ed8" },
+        ],
+      },
+      "flow-edges": {
+        title: "Flujo por arista",
+        description: "Resalta las calles con mas paso de vehiculos durante la simulacion.",
+        units: "Unidad: vehiculos por tick (conteo acumulado)",
+        legend: [
+          { label: "Bajo", color: "#94a3b8" },
+          { label: "Medio", color: "#3b82f6" },
+          { label: "Alto", color: "#f59e0b" },
+        ],
+      },
+    };
 
     function setStatus(text, mode = "") {
       $("statusText").textContent = text;
@@ -531,6 +704,27 @@ INDEX_HTML = r"""<!doctype html>
       map.setView([19.412, -99.165], 13);
     }
 
+    function initMetricMap() {
+      if (metricMap || !window.L) return;
+      metricMap = L.map("metricMap", {
+        preferCanvas: false,
+        zoomControl: true,
+        attributionControl: true,
+      });
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 20,
+        attribution: "&copy; OpenStreetMap contributors",
+      }).addTo(metricMap);
+      metricMap.createPane("metricPane");
+      metricMap.getPane("metricPane").style.zIndex = 510;
+      heatDensityLayer = L.heatLayer([], { radius: 18, blur: 14, maxZoom: 16, pane: "metricPane" });
+      heatSpeedLayer = L.heatLayer([], { radius: 18, blur: 16, maxZoom: 16, pane: "metricPane" });
+      heatSpeedDensityLayer = L.heatLayer([], { radius: 18, blur: 16, maxZoom: 16, pane: "metricPane" });
+      flowNodeLayer = L.layerGroup().addTo(metricMap);
+      flowEdgeLayer = L.layerGroup().addTo(metricMap);
+      metricMap.setView([19.412, -99.165], 13);
+    }
+
     function toLatLng(point) {
       return [point[1], point[0]];
     }
@@ -544,6 +738,17 @@ INDEX_HTML = r"""<!doctype html>
       if (!topology) return;
       for (const edge of topology.topology.edges) {
         edgeByKey.set(edgeKey([edge.u, edge.v, edge.key]), edge);
+      }
+    }
+
+    function rebuildBoundaryNodes() {
+      boundaryNodes = [];
+      flowBoundaryCounts = new Map();
+      if (!topology) return;
+      for (const [nodeId, node] of Object.entries(topology.topology.nodes)) {
+        if (!node.is_boundary) continue;
+        boundaryNodes.push({ id: nodeId, x: node.x, y: node.y });
+        flowBoundaryCounts.set(nodeId, 0);
       }
     }
 
@@ -672,6 +877,155 @@ INDEX_HTML = r"""<!doctype html>
       }
     }
 
+    function setMapMode(mode) {
+      mapMode = mode;
+      document.querySelectorAll(".map-btn").forEach((button) => {
+        button.classList.toggle("active", button.dataset.map === mode);
+      });
+      updateMetricBanner(mode);
+      renderMetricOverlays();
+    }
+
+    function updateMetricBanner(mode) {
+      const meta = metricMeta[mode] || null;
+      if (!meta) return;
+      $("metricTitle").textContent = meta.title;
+      $("metricDescription").textContent = meta.description;
+      $("metricUnits").textContent = meta.units || "";
+      const legend = $("metricLegend");
+      legend.innerHTML = "";
+      for (const item of meta.legend) {
+        const row = document.createElement("div");
+        row.className = "legend-item";
+        const swatch = document.createElement("span");
+        swatch.className = "legend-swatch";
+        swatch.style.background = item.color;
+        const label = document.createElement("span");
+        label.textContent = item.label;
+        row.appendChild(swatch);
+        row.appendChild(label);
+        legend.appendChild(row);
+      }
+    }
+
+    function trimPoints(points, maxLen = 8000) {
+      if (points.length <= maxLen) return points;
+      return points.slice(points.length - maxLen);
+    }
+
+    function updateHeatCaches(step) {
+      if (!step || !step.state) return;
+      if (typeof step.step_number === "number" && step.step_number === lastHeatStep) return;
+      if (typeof step.step_number === "number" && step.step_number % 2 !== 0) return;
+      if (typeof step.step_number === "number") lastHeatStep = step.step_number;
+      const current = step.state.vehicles || [];
+      for (const vehicle of current) {
+        const lat = vehicle.y;
+        const lon = vehicle.x;
+        const speed = Number(vehicle.speed_kph || 0);
+        heatDensityPoints.push([lat, lon, 1]);
+        heatSpeedPoints.push([lat, lon, Math.max(1, speed / 10)]);
+        heatSpeedDensityPoints.push([lat, lon, Math.max(1, speed / 8)]);
+        if (Array.isArray(vehicle.edge)) {
+          const key = edgeKey(vehicle.edge);
+          edgeUsage.set(key, (edgeUsage.get(key) || 0) + 1);
+        }
+      }
+      heatDensityPoints = trimPoints(heatDensityPoints);
+      heatSpeedPoints = trimPoints(heatSpeedPoints);
+      heatSpeedDensityPoints = trimPoints(heatSpeedDensityPoints);
+
+      const prevIds = new Set(prevVehicles.keys());
+      const currentIds = new Set(current.map((v) => v.id));
+      const newcomers = current.filter((v) => !prevIds.has(v.id));
+      const gone = Array.from(prevVehicles.values()).filter((v) => !currentIds.has(v.id));
+      for (const v of [...newcomers, ...gone]) {
+        const nearest = nearestBoundaryNode(v);
+        if (!nearest) continue;
+        const count = (flowBoundaryCounts.get(nearest.id) || 0) + 1;
+        flowBoundaryCounts.set(nearest.id, count);
+      }
+      prevVehicles = new Map(current.map((v) => [v.id, v]));
+    }
+
+    function nearestBoundaryNode(vehicle) {
+      if (!boundaryNodes.length) return null;
+      let best = null;
+      let bestDistance = Number.POSITIVE_INFINITY;
+      for (const node of boundaryNodes) {
+        const distance = Math.hypot(vehicle.x - node.x, vehicle.y - node.y);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = node;
+        }
+      }
+      return best;
+    }
+
+    function renderFlowNodes() {
+      flowNodeLayer.clearLayers();
+      if (!boundaryNodes.length) return;
+      const counts = Array.from(flowBoundaryCounts.values());
+      const maxCount = Math.max(1, ...counts);
+      for (const node of boundaryNodes) {
+        const count = flowBoundaryCounts.get(node.id) || 0;
+        const radius = 4 + (16 * count) / maxCount;
+        L.circleMarker([node.y, node.x], {
+          radius,
+          color: "#ffffff",
+          weight: 1,
+          fillColor: "#1570ef",
+          fillOpacity: 0.7,
+        }).bindTooltip(`Nodo frontera ${node.id} | Flujo ${count}`, { sticky: true }).addTo(flowNodeLayer);
+      }
+    }
+
+    function renderFlowEdges() {
+      flowEdgeLayer.clearLayers();
+      if (!topology) return;
+      const usageValues = Array.from(edgeUsage.values());
+      const maxUsage = Math.max(1, ...usageValues);
+      for (const edge of topology.topology.edges) {
+        if (!edge.geometry_points || edge.geometry_points.length < 2) continue;
+        const key = edgeKey([edge.u, edge.v, edge.key]);
+        const usage = edgeUsage.get(key) || 0;
+        if (!usage) continue;
+        const ratio = usage / maxUsage;
+        const color = ratio > 0.75 ? "#dc6803" : ratio > 0.4 ? "#1570ef" : "#98a2b3";
+        const weight = 2 + ratio * 4;
+        L.polyline(edge.geometry_points.map(toLatLng), {
+          color,
+          weight,
+          opacity: 0.9,
+        }).addTo(flowEdgeLayer);
+      }
+    }
+
+    function renderMetricOverlays() {
+      initMetricMap();
+      if (!metricMap) return;
+      if (metricMap.hasLayer(heatDensityLayer)) metricMap.removeLayer(heatDensityLayer);
+      if (metricMap.hasLayer(heatSpeedLayer)) metricMap.removeLayer(heatSpeedLayer);
+      if (metricMap.hasLayer(heatSpeedDensityLayer)) metricMap.removeLayer(heatSpeedDensityLayer);
+      flowNodeLayer.clearLayers();
+      flowEdgeLayer.clearLayers();
+
+      if (mapMode === "density") {
+        metricMap.addLayer(heatDensityLayer);
+        heatDensityLayer.setLatLngs(heatDensityPoints);
+      } else if (mapMode === "speed") {
+        metricMap.addLayer(heatSpeedLayer);
+        heatSpeedLayer.setLatLngs(heatSpeedPoints);
+      } else if (mapMode === "speed-density") {
+        metricMap.addLayer(heatSpeedDensityLayer);
+        heatSpeedDensityLayer.setLatLngs(heatSpeedDensityPoints);
+      } else if (mapMode === "flow-nodes") {
+        renderFlowNodes();
+      } else if (mapMode === "flow-edges") {
+        renderFlowEdges();
+      }
+    }
+
     function renderStats(step) {
       const state = step ? step.state : null;
       const currentMetrics = step ? step.metrics : metrics;
@@ -686,8 +1040,14 @@ INDEX_HTML = r"""<!doctype html>
       vehicles = step.state.vehicles || [];
       trafficLights = step.state.traffic_lights || [];
       metrics = step.metrics || null;
+      updateHeatCaches(step);
       renderStats(step);
       renderDynamicLayers();
+      if (typeof step.step_number === "number" && step.step_number === lastOverlayStep) {
+        return;
+      }
+      if (typeof step.step_number === "number") lastOverlayStep = step.step_number;
+      renderMetricOverlays();
     }
 
     async function loadAreas() {
@@ -713,9 +1073,15 @@ INDEX_HTML = r"""<!doctype html>
     async function loadTopology(areaId) {
       topology = await apiFetch(`/geographic-areas/${encodeURIComponent(areaId)}/topology`);
       rebuildEdgeIndex();
+      rebuildBoundaryNodes();
       vehicles = [];
       trafficLights = [];
       metrics = null;
+      edgeUsage = new Map();
+      heatDensityPoints = [];
+      heatSpeedPoints = [];
+      heatSpeedDensityPoints = [];
+      prevVehicles = new Map();
       if (!simulationId) {
         activeModelConfig = null;
       }
@@ -723,6 +1089,7 @@ INDEX_HTML = r"""<!doctype html>
       $("areaMeta").textContent = `${topology.node_count} nodos, ${topology.edge_count} aristas. BBox ${box.min_x.toFixed(4)}, ${box.min_y.toFixed(4)} a ${box.max_x.toFixed(4)}, ${box.max_y.toFixed(4)}.`;
       renderStats(null);
       renderTopology();
+      renderMetricOverlays();
     }
 
     function closeSocket() {
@@ -839,6 +1206,10 @@ INDEX_HTML = r"""<!doctype html>
         updateModelPreview();
       });
       window.addEventListener("resize", () => map && map.invalidateSize());
+      window.addEventListener("resize", () => metricMap && metricMap.invalidateSize());
+      document.querySelectorAll(".map-btn").forEach((button) => {
+        button.addEventListener("click", () => setMapMode(button.dataset.map));
+      });
     }
 
     async function boot() {
@@ -848,6 +1219,8 @@ INDEX_HTML = r"""<!doctype html>
         return;
       }
       initMap();
+      initMetricMap();
+      updateMetricBanner(mapMode);
       config = await fetch("/config").then((response) => response.json());
       $("apiBox").textContent = `API: ${config.api_base_url}`;
       updateModelPreview();

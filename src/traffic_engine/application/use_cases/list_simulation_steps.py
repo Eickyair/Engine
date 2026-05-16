@@ -11,11 +11,11 @@ class ListSimulationStepsUseCase:
     def __init__(self, repository: SimulationRepository) -> None:
         self.repository = repository
 
-    def execute(self, simulation_id: str) -> list[SimulationStep]:
+    def execute(self, simulation_id: str, allow_running: bool = False) -> list[SimulationStep]:
         record = self.repository.get(simulation_id)
         if record is None:
             raise SimulationNotFoundError(f"Simulation '{simulation_id}' does not exist.")
-        if record.status == SimulationStatus.RUNNING:
+        if record.status == SimulationStatus.RUNNING and not allow_running:
             raise SimulationNotReadyError(
                 "Simulation steps are available through REST only after the simulation finishes or is cancelled."
             )
