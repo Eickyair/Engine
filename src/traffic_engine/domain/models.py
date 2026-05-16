@@ -476,6 +476,11 @@ class SimulationMetrics:
     density: float
     throughput_veh_per_min: float
     congestion_ratio: float
+    heat_density_points: List[List[float]] = field(default_factory=list)
+    heat_speed_points: List[List[float]] = field(default_factory=list)
+    heat_speed_density_points: List[List[float]] = field(default_factory=list)
+    flow_nodes: List[Dict[str, Any]] = field(default_factory=list)
+    flow_edges: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -485,6 +490,11 @@ class SimulationMetrics:
             "density": self.density,
             "throughput_veh_per_min": self.throughput_veh_per_min,
             "congestion_ratio": self.congestion_ratio,
+            "heat_density_points": self.heat_density_points,
+            "heat_speed_points": self.heat_speed_points,
+            "heat_speed_density_points": self.heat_speed_density_points,
+            "flow_nodes": self.flow_nodes,
+            "flow_edges": self.flow_edges,
         }
 
     @classmethod
@@ -496,6 +506,11 @@ class SimulationMetrics:
             density=float(payload["density"]),
             throughput_veh_per_min=float(payload["throughput_veh_per_min"]),
             congestion_ratio=float(payload["congestion_ratio"]),
+            heat_density_points=[list(item) for item in payload.get("heat_density_points", [])],
+            heat_speed_points=[list(item) for item in payload.get("heat_speed_points", [])],
+            heat_speed_density_points=[list(item) for item in payload.get("heat_speed_density_points", [])],
+            flow_nodes=[dict(item) for item in payload.get("flow_nodes", [])],
+            flow_edges=[dict(item) for item in payload.get("flow_edges", [])],
         )
 
 
