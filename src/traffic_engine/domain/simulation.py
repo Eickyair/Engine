@@ -53,6 +53,7 @@ class NaSchSimulationModel:
         self._boundary_nodes: List[str] = []
         self._adjacency: Dict[str, List[EdgeId]] = {}
         self._traffic_lights_by_node: Dict[str, TrafficLight] = {}
+        self._blocked_lanes: Dict[EdgeId, List[int]] = {}
         self._step_number = 0
         self._next_vehicle_id = 1
         self._last_removed = 0
@@ -75,6 +76,7 @@ class NaSchSimulationModel:
         self._traffic_lights_by_node = {
             traffic_light.node_id: traffic_light for traffic_light in self._traffic_lights
         }
+        self._blocked_lanes = config.blocked_lanes or {}
         self._step_number = 0
         self._next_vehicle_id = 1
         self._last_removed = 0
@@ -290,6 +292,10 @@ class NaSchSimulationModel:
         candidate = self._cellular_model.resolve_lane(vehicle, available_lanes, gap)
         if candidate == vehicle.lane or not 0 <= candidate < available_lanes:
             return vehicle.lane
+        # Check if candidate lane is blocked
+        blocked_lanes = self._blocked_lanes.get(vehicle.current_edge, [])
+        if candidate in blocked_lanes:
+            return vehicle.lane
         current_edge = vehicle.current_edge
         lane_cells = self._edge_cells[current_edge][candidate]
         start = max(0, vehicle.cell_pos - 1)
@@ -324,9 +330,10 @@ class NaSchSimulationModel:
     def _first_free_spawn_cell(self, edge_id: EdgeId) -> tuple[int | None, int]:
         edge_lanes = self._edge_cells[edge_id]
         entry_window = min(3, max((len(cells) for cells in edge_lanes), default=0))
+        blocked_lanes = self._blocked_lanes.get(edge_id, [])
         for index in range(entry_window):
             for lane, cells in enumerate(edge_lanes):
-                if index < len(cells) and cells[index] == 0:
+                if lane not in blocked_lanes and index < len(cells) and cells[index] == 0:
                     return lane, index
         return None, 0
 

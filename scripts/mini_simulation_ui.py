@@ -320,6 +320,179 @@ INDEX_HTML = r"""<!doctype html>
       line-height: 1.4;
     }
 
+    /* Blocked Lanes Panel */
+    .blocked-lanes-section {
+      margin-top: 18px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+    }
+
+    .blocked-lanes-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      user-select: none;
+      margin-bottom: 10px;
+    }
+
+    .blocked-lanes-header:hover {
+      opacity: 0.8;
+    }
+
+    .blocked-lanes-list {
+      display: none;
+      max-height: 200px;
+      overflow-y: auto;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fbfcfe;
+    }
+
+    .blocked-lanes-list.visible {
+      display: block;
+    }
+
+    .blocked-lane-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--line);
+      font-size: 12px;
+    }
+
+    .blocked-lane-item:last-child {
+      border-bottom: 0;
+    }
+
+    .blocked-lane-lanes {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+
+    .lane-badge {
+      display: inline-block;
+      background: #d92d20;
+      color: white;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .remove-btn {
+      background: #fee4e2;
+      color: #d92d20;
+      border: 0;
+      padding: 3px 8px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .remove-btn:hover {
+      background: #fecdd3;
+    }
+
+    .blocked-lanes-empty {
+      padding: 12px 10px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      font-style: italic;
+    }
+
+    /* Modal */
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      animation: fadeIn 0.2s;
+    }
+
+    .modal.visible {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    .modal-content {
+      background: white;
+      border-radius: 8px;
+      padding: 24px;
+      max-width: 400px;
+      width: 90%;
+      box-shadow: 0 20px 60px rgba(16, 24, 40, 0.16);
+      animation: slideUp 0.3s;
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    .modal-header {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      color: var(--text);
+    }
+
+    .modal-description {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 14px;
+      line-height: 1.4;
+    }
+
+    .lane-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      cursor: pointer;
+    }
+
+    .lane-checkbox input {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+      flex: 0 0 auto;
+    }
+
+    .lane-checkbox label {
+      margin: 0;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--text);
+      font-weight: 400;
+      flex: 1;
+    }
+
+    .modal-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .modal-actions button {
+      min-height: 38px;
+    }
+
     @media (max-width: 900px) {
       .app { grid-template-columns: 1fr; }
       aside { border-right: 0; border-bottom: 1px solid var(--line); }
@@ -400,6 +573,16 @@ INDEX_HTML = r"""<!doctype html>
       <label for="seed">Seed</label>
       <input id="seed" type="number" value="42" />
 
+      <div class="blocked-lanes-section">
+        <div class="blocked-lanes-header" id="blockedLanesToggle">
+          <strong style="font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0;">Carriles Bloqueados</strong>
+          <span id="blockedLanesCount" style="background: #d92d20; color: white; padding: 2px 6px; border-radius: 12px; font-size: 11px; font-weight: 700;">0</span>
+        </div>
+        <div class="blocked-lanes-list" id="blockedLanesList">
+          <div class="blocked-lanes-empty">Haz clic en una vialidad para bloquear carriles</div>
+        </div>
+      </div>
+
       <div class="actions">
         <button id="startBtn" class="primary" type="button">Iniciar</button>
         <button id="cancelBtn" class="danger" type="button" disabled>Cancelar</button>
@@ -426,6 +609,19 @@ INDEX_HTML = r"""<!doctype html>
     </main>
   </div>
 
+  <!-- Modal para bloquear carriles -->
+  <div id="blockedLanesModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">Bloquear carriles</div>
+      <div class="modal-description" id="modalEdgeInfo"></div>
+      <div id="laneCheckboxes"></div>
+      <div class="modal-actions">
+        <button id="modalCancel" class="secondary" type="button">Cancelar</button>
+        <button id="modalConfirm" class="primary" type="button">Bloquear</button>
+      </div>
+    </div>
+  </div>
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     const $ = (id) => document.getElementById(id);
@@ -445,10 +641,129 @@ INDEX_HTML = r"""<!doctype html>
     let vehicleLayer = null;
     let trafficLightLayer = null;
     let edgeByKey = new Map();
+    let blockedLanes = new Map();
+    let currentEdgeForModal = null;
 
     function setStatus(text, mode = "") {
       $("statusText").textContent = text;
       $("statusDot").className = `dot ${mode}`.trim();
+    }
+
+    function showBlockedLanesModal(edgeKey, numLanes) {
+      if (simulationId) {
+        setStatus("No se pueden bloquear carriles durante la simulación", "error");
+        return;
+      }
+      currentEdgeForModal = edgeKey;
+      const [u, v, k] = edgeKey.split("-");
+      const edgeLabel = `${u} → ${v}`;
+      $("modalEdgeInfo").textContent = `Selecciona los carriles que deseas bloquear en la vialidad ${edgeLabel} (${numLanes} carril${numLanes === 1 ? "" : "es"})`;
+      
+      const checkboxes = $("laneCheckboxes");
+      checkboxes.innerHTML = "";
+      const blocked = blockedLanes.get(edgeKey) || [];
+      
+      for (let i = 0; i < numLanes; i++) {
+        const isBlocked = blocked.includes(i);
+        const div = document.createElement("div");
+        div.className = "lane-checkbox";
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.id = `lane-${i}`;
+        input.checked = isBlocked;
+        const label = document.createElement("label");
+        label.htmlFor = `lane-${i}`;
+        label.textContent = `Carril ${i + 1}`;
+        div.appendChild(input);
+        div.appendChild(label);
+        checkboxes.appendChild(div);
+      }
+      
+      $("blockedLanesModal").classList.add("visible");
+    }
+
+    function closeBlockedLanesModal() {
+      $("blockedLanesModal").classList.remove("visible");
+      currentEdgeForModal = null;
+    }
+
+    function confirmBlockedLanes() {
+      if (!currentEdgeForModal) return;
+      const checkboxes = $("laneCheckboxes").querySelectorAll("input[type='checkbox']");
+      const blocked = [];
+      checkboxes.forEach((cb, idx) => {
+        if (cb.checked) blocked.push(idx);
+      });
+      
+      if (blocked.length > 0) {
+        blockedLanes.set(currentEdgeForModal, blocked);
+      } else {
+        blockedLanes.delete(currentEdgeForModal);
+      }
+      
+      updateBlockedLanesPanel();
+      renderTopology();
+      closeBlockedLanesModal();
+    }
+
+    function updateBlockedLanesPanel() {
+      const list = $("blockedLanesList");
+      if (!list) return; // Elemento no existe aún
+      
+      const count = Array.from(blockedLanes.values()).reduce((sum, lanes) => sum + lanes.length, 0);
+      const countElem = $("blockedLanesCount");
+      if (countElem) countElem.textContent = count;
+      
+      if (blockedLanes.size === 0) {
+        list.innerHTML = '<div class="blocked-lanes-empty">Haz clic en una vialidad para bloquear carriles</div>';
+        return;
+      }
+      
+      list.innerHTML = "";
+      blockedLanes.forEach((lanes, edgeKey) => {
+        try {
+          const parts = edgeKey.split("-");
+          const u = parts[0];
+          const v = parts[1];
+          const item = document.createElement("div");
+          item.className = "blocked-lane-item";
+          
+          const edgeLabel = document.createElement("span");
+          edgeLabel.textContent = `${u} → ${v}`;
+          
+          const lanesDiv = document.createElement("div");
+          lanesDiv.className = "blocked-lane-lanes";
+          lanes.forEach(lane => {
+            const badge = document.createElement("span");
+            badge.className = "lane-badge";
+            badge.textContent = `C${lane + 1}`;
+            lanesDiv.appendChild(badge);
+          });
+          
+          const removeBtn = document.createElement("button");
+          removeBtn.className = "remove-btn";
+          removeBtn.textContent = "✕";
+          if (removeBtn) {
+            removeBtn.addEventListener("click", () => {
+              blockedLanes.delete(edgeKey);
+              updateBlockedLanesPanel();
+              renderTopology();
+            });
+          }
+          
+          item.appendChild(edgeLabel);
+          item.appendChild(lanesDiv);
+          item.appendChild(removeBtn);
+          list.appendChild(item);
+        } catch (error) {
+          console.error("Error rendering blocked lane item:", error);
+        }
+      });
+    }
+
+    function clearBlockedLanes() {
+      blockedLanes.clear();
+      updateBlockedLanesPanel();
     }
 
     function setBusy(isBusy) {
@@ -617,15 +932,28 @@ INDEX_HTML = r"""<!doctype html>
         if (!edge.geometry_points || edge.geometry_points.length < 2) continue;
         const lanes = edge.lanes || 1;
         const points = edge.geometry_points.map(toLatLng);
-        const color = edge.allows_lane_change ? "#475467" : "#98a2b3";
-        L.polyline(points, {
+        const edgeKey = `${edge.u}-${edge.v}-${edge.key}`;
+        const hasBlockedLanes = blockedLanes.has(edgeKey);
+        const color = hasBlockedLanes ? "#d92d20" : (edge.allows_lane_change ? "#475467" : "#98a2b3");
+        const weight = hasBlockedLanes ? Math.max(3, Math.min(10, lanes + 4)) : Math.max(2, Math.min(8, lanes + 2));
+        
+        const polyline = L.polyline(points, {
           pane: "roadsPane",
           color,
-          weight: Math.max(2, Math.min(8, lanes + 2)),
-          opacity: 0.82,
+          weight,
+          opacity: hasBlockedLanes ? 1 : 0.82,
           lineCap: "round",
           lineJoin: "round",
-        }).bindTooltip(`${lanes} carril${lanes === 1 ? "" : "es"}`, { sticky: true }).addTo(edgeLayer);
+        });
+        
+        const blockedLanesList = blockedLanes.get(edgeKey) || [];
+        const tooltip = hasBlockedLanes 
+          ? `${lanes} carril${lanes === 1 ? "" : "es"} | Bloqueados: ${blockedLanesList.map(l => l + 1).join(", ")}`
+          : `${lanes} carril${lanes === 1 ? "" : "es"}`;
+        
+        polyline.bindTooltip(tooltip, { sticky: true });
+        polyline.on("click", () => showBlockedLanesModal(edgeKey, lanes));
+        polyline.addTo(edgeLayer);
       }
       map.fitBounds(topologyBounds(), { padding: [24, 24], maxZoom: 17 });
       renderDynamicLayers();
@@ -718,6 +1046,7 @@ INDEX_HTML = r"""<!doctype html>
       metrics = null;
       if (!simulationId) {
         activeModelConfig = null;
+        clearBlockedLanes();
       }
       const box = topology.topology.bbox;
       $("areaMeta").textContent = `${topology.node_count} nodos, ${topology.edge_count} aristas. BBox ${box.min_x.toFixed(4)}, ${box.min_y.toFixed(4)} a ${box.max_x.toFixed(4)}, ${box.max_y.toFixed(4)}.`;
@@ -783,6 +1112,13 @@ INDEX_HTML = r"""<!doctype html>
       if (!areaId) return;
       setBusy(true);
       setStatus("Creando simulacion...", "running");
+      
+      // Convertir blockedLanes Map a objeto
+      const blockedLanesObj = {};
+      blockedLanes.forEach((lanes, edgeKey) => {
+        blockedLanesObj[edgeKey] = lanes;
+      });
+      
       const body = {
         area_id: areaId,
         initial_vehicles: numberValue("initialVehicles"),
@@ -792,6 +1128,7 @@ INDEX_HTML = r"""<!doctype html>
         noise_prob: numberValue("noiseProb"),
         seed: numberValue("seed"),
         tick_interval_ms: numberValue("tickInterval"),
+        blocked_lanes: blockedLanesObj,
         ...modelConfigFromControls(),
       };
       try {
@@ -822,39 +1159,104 @@ INDEX_HTML = r"""<!doctype html>
     }
 
     function bindControls() {
-      $("reloadBtn").addEventListener("click", () => loadAreas().catch((error) => setStatus(error.message, "error")));
-      $("areaSelect").addEventListener("change", (event) => loadTopology(event.target.value).catch((error) => setStatus(error.message, "error")));
-      $("startBtn").addEventListener("click", startSimulation);
-      $("cancelBtn").addEventListener("click", cancelSimulation);
-      $("spawnRate").addEventListener("input", () => $("spawnValue").textContent = Number($("spawnRate").value).toFixed(2));
-      $("noiseProb").addEventListener("input", () => $("noiseValue").textContent = Number($("noiseProb").value).toFixed(2));
+      const reloadBtn = $("reloadBtn");
+      const areaSelect = $("areaSelect");
+      const startBtn = $("startBtn");
+      const cancelBtn = $("cancelBtn");
+      const spawnRate = $("spawnRate");
+      const spawnValue = $("spawnValue");
+      const noiseProb = $("noiseProb");
+      const noiseValue = $("noiseValue");
+
+      if (reloadBtn) {
+        reloadBtn.addEventListener("click", () => loadAreas().catch((error) => setStatus(error.message, "error")));
+      }
+      if (areaSelect) {
+        areaSelect.addEventListener("change", (event) => loadTopology(event.target.value).catch((error) => setStatus(error.message, "error")));
+      }
+      if (startBtn) {
+        startBtn.addEventListener("click", startSimulation);
+      }
+      if (cancelBtn) {
+        cancelBtn.addEventListener("click", cancelSimulation);
+      }
+      if (spawnRate) {
+        spawnRate.addEventListener("input", () => {
+          if (spawnValue) spawnValue.textContent = Number(spawnRate.value).toFixed(2);
+        });
+      }
+      if (noiseProb) {
+        noiseProb.addEventListener("input", () => {
+          if (noiseValue) noiseValue.textContent = Number(noiseProb.value).toFixed(2);
+        });
+      }
+
       ["executionMode", "defaultLanes", "trafficLightGreen", "trafficLightRed", "trafficLightPercentage", "enableLaneChanges"].forEach((id) => {
-        $(id).addEventListener("input", updateModelPreview);
-        $(id).addEventListener("change", updateModelPreview);
-      });
-      $("enableLaneChanges").addEventListener("change", () => {
-        if ($("enableLaneChanges").checked && numberValue("defaultLanes") < 2) {
-          $("defaultLanes").value = "2";
+        const elem = $(id);
+        if (elem) {
+          elem.addEventListener("input", updateModelPreview);
+          elem.addEventListener("change", updateModelPreview);
         }
-        updateModelPreview();
       });
+
+      const enableLaneChanges = $("enableLaneChanges");
+      if (enableLaneChanges) {
+        enableLaneChanges.addEventListener("change", () => {
+          if (enableLaneChanges.checked && numberValue("defaultLanes") < 2) {
+            $("defaultLanes").value = "2";
+          }
+          updateModelPreview();
+        });
+      }
+
+      const toggle = $("blockedLanesToggle");
+      if (toggle) {
+        toggle.addEventListener("click", () => {
+          const list = $("blockedLanesList");
+          if (list) list.classList.toggle("visible");
+        });
+      }
+
+      const modalCancel = $("modalCancel");
+      if (modalCancel) {
+        modalCancel.addEventListener("click", closeBlockedLanesModal);
+      }
+
+      const modalConfirm = $("modalConfirm");
+      if (modalConfirm) {
+        modalConfirm.addEventListener("click", confirmBlockedLanes);
+      }
+
+      const blockedLanesModal = $("blockedLanesModal");
+      if (blockedLanesModal) {
+        blockedLanesModal.addEventListener("click", (e) => {
+          if (e.target.id === "blockedLanesModal") closeBlockedLanesModal();
+        });
+      }
+
       window.addEventListener("resize", () => map && map.invalidateSize());
     }
 
     async function boot() {
-      bindControls();
-      if (!window.L) {
-        setStatus("Leaflet no pudo cargarse", "error");
-        return;
+      try {
+        bindControls();
+        if (!window.L) {
+          setStatus("Leaflet no pudo cargarse", "error");
+          return;
+        }
+        initMap();
+        config = await fetch("/config").then((response) => response.json());
+        const apiBox = $("apiBox");
+        if (apiBox) apiBox.textContent = `API: ${config.api_base_url}`;
+        updateModelPreview();
+        await loadAreas();
+      } catch (error) {
+        console.error("Boot error:", error);
+        setStatus(error.message, "error");
       }
-      initMap();
-      config = await fetch("/config").then((response) => response.json());
-      $("apiBox").textContent = `API: ${config.api_base_url}`;
-      updateModelPreview();
-      await loadAreas();
     }
 
-    boot().catch((error) => setStatus(error.message, "error"));
+    boot();
   </script>
 </body>
 </html>
