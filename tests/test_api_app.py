@@ -185,6 +185,32 @@ def test_api_rejects_lane_changes_without_multiple_lanes() -> None:
     assert "at least two lanes" in response.json()["detail"]
 
 
+def test_api_exposes_shareable_endpoint_schema_document() -> None:
+    client = TestClient(app_module.app)
+
+    response = client.get("/api/response-models.json")
+
+    assert response.status_code == 200
+    document = response.json()
+    assert document["source"] == "/openapi.json"
+    assert "models" not in document
+
+    simulation_endpoint = next(
+        endpoint
+        for endpoint in document["endpoints"]
+        if endpoint["path"] == "/simulations" and endpoint["method"] == "POST"
+    )
+    assert simulation_endpoint["request_body"]["schema"]["required"] == ["area_id"]
+    assert simulation_endpoint["request_body"]["schema"]["properties"]["area_id"] == {
+        "type": "string",
+        "minLength": 1,
+    }
+    assert simulation_endpoint["responses"]["201"]["schema"]["properties"]["simulation_id"] == {
+        "type": "string"
+    }
+    assert "$ref" not in str(simulation_endpoint)
+
+
 def test_websocket_serializes_datetime_events() -> None:
     class FakeDatetimeEventBus:
         def subscribe(self, simulation_id: str):
