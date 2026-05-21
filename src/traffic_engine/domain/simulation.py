@@ -5,7 +5,7 @@ from __future__ import annotations
 import heapq
 from math import hypot
 from random import Random
-from typing import Dict, List, Protocol
+from typing import Any, Dict, List, Protocol
 
 from ..config import CELL_SIZE_M, TICK_SECONDS
 from .abstractions import CellularModel, RouteProvider
@@ -17,6 +17,7 @@ from .models import (
     SimulationConfig,
     SimulationMetrics,
     SimulationState,
+    StepVisualization,
     TopologyData,
     TrafficLight,
     TrafficLightSnapshot,
@@ -30,7 +31,7 @@ class SimulationModel(Protocol):
     def reset(self, topology: TopologyData, config: SimulationConfig) -> SimulationState:
         ...
 
-    def step(self) -> tuple[SimulationState, SimulationMetrics, bool]:
+    def step(self) -> tuple[SimulationState, SimulationMetrics, StepVisualization, bool]:
         ...
 
 
@@ -166,9 +167,13 @@ class NaSchSimulationModel:
         if self._config.execution_mode == SimulationExecutionMode.CONTINUOUS:
             self._spawn_from_rate()
         state = self._build_state()
-        metrics = self._build_metrics(speeds=speeds, state=state)
+        current_positions = {v.id: (v.x, v.y) for v in state.vehicles}
+        flow_nodes = self._build_flow_nodes(current_positions)
+        self._prev_vehicle_positions = current_positions
+        metrics = self._build_metrics(speeds=speeds)
+        visualization = self._build_visualization(state=state, flow_nodes=flow_nodes)
         done = self._step_number >= self._config.max_steps
-        return state, metrics, done
+        return state, metrics, visualization, done
 
     def _spawn_from_rate(self) -> None:
         if self._config is None:
@@ -345,29 +350,13 @@ class NaSchSimulationModel:
             traffic_lights=self._build_traffic_light_snapshots(),
         )
 
-    def _build_metrics(self, speeds: List[int], state: SimulationState) -> SimulationMetrics:
+    def _build_metrics(self, speeds: List[int]) -> SimulationMetrics:
         total_vehicles = len(self._vehicles)
         avg_speed_cells = sum(speeds) / len(speeds) if speeds else 0.0
         avg_speed_kph = avg_speed_cells * CELL_SIZE_M * 3.6 / TICK_SECONDS
         stopped = sum(1 for vehicle in self._vehicles.values() if vehicle.velocity == 0)
         congestion_ratio = stopped / total_vehicles if total_vehicles else 0.0
         throughput = self._last_removed * 60.0 / TICK_SECONDS
-        heat_density_points = []
-        heat_speed_points = []
-        heat_speed_density_points = []
-        flow_edges: Dict[EdgeId, int] = {}
-        current_positions: Dict[int, tuple[float, float]] = {}
-
-        for vehicle in state.vehicles:
-            heat_density_points.append([vehicle.y, vehicle.x, 1.0])
-            heat_speed_points.append([vehicle.y, vehicle.x, max(1.0, float(vehicle.speed_kph))])
-            heat_speed_density_points.append([vehicle.y, vehicle.x, max(1.0, float(vehicle.speed_kph))])
-            flow_edges[vehicle.edge] = flow_edges.get(vehicle.edge, 0) + 1
-            current_positions[vehicle.id] = (vehicle.x, vehicle.y)
-
-        flow_nodes = self._build_flow_nodes(current_positions)
-        self._prev_vehicle_positions = current_positions
-
         return SimulationMetrics(
             step_number=self._step_number,
             total_vehicles=total_vehicles,
@@ -375,9 +364,23 @@ class NaSchSimulationModel:
             density=self._density(),
             throughput_veh_per_min=throughput,
             congestion_ratio=congestion_ratio,
+        )
+
+    def _build_visualization(
+        self,
+        state: SimulationState,
+        flow_nodes: List[Dict[str, Any]],
+    ) -> StepVisualization:
+        heat_density_points = []
+        heat_speed_points = []
+        flow_edges: Dict[EdgeId, int] = {}
+        for vehicle in state.vehicles:
+            heat_density_points.append([vehicle.y, vehicle.x, 1.0])
+            heat_speed_points.append([vehicle.y, vehicle.x, max(1.0, float(vehicle.speed_kph))])
+            flow_edges[vehicle.edge] = flow_edges.get(vehicle.edge, 0) + 1
+        return StepVisualization(
             heat_density_points=heat_density_points,
             heat_speed_points=heat_speed_points,
-            heat_speed_density_points=heat_speed_density_points,
             flow_nodes=flow_nodes,
             flow_edges=[
                 {"edge": list(edge_id), "count": count}

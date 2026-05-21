@@ -22,8 +22,10 @@ from .schemas import (
     CreateSimulationRequest,
     GeographicAreaTopologyResponse,
     GeographicAreaSummaryResponse,
+    SimulationMetricsResponse,
     SimulationRecordResponse,
     SimulationStepResponse,
+    StepVisualizationResponse,
     TopologyEdgeResponse,
     TopologyNodeResponse,
     TopologyResponse,
@@ -187,7 +189,8 @@ def create_app() -> FastAPI:
             SimulationStepResponse(
                 simulation_id=step.simulation_id,
                 step_number=step.step_number,
-                metrics=step.metrics.to_dict(),
+                metrics=SimulationMetricsResponse(**step.metrics.to_dict()),
+                visualization=StepVisualizationResponse(**step.visualization.to_dict()),
                 state=step.state.to_dict(),
                 recorded_at=step.recorded_at,
             )

@@ -161,7 +161,7 @@ def test_classic_mode_does_not_spawn_after_initialization_and_emits_ui_payload()
     )
     initial_state = model.reset(topology=topology, config=config)
 
-    state, _, _ = model.step()
+    state, _, _, _ = model.step()
 
     assert initial_state.total_vehicles == 1
     assert state.total_vehicles <= 1
@@ -198,8 +198,8 @@ def test_lane_change_is_marked_in_vehicle_snapshot() -> None:
     model._vehicles[1] = Vehicle(vid=1, route=route, cell_pos=0, lane=0)
     model._edge_cells[("A", "B", 0)][0][0] = 1
 
-    state, _, _ = model.step()
-    next_state, _, _ = model.step()
+    state, _, _, _ = model.step()
+    next_state, _, _, _ = model.step()
 
     assert state.vehicles[0].lane == 1
     assert state.vehicles[0].is_changing_lane is True

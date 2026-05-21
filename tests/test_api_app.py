@@ -4,7 +4,16 @@ from fastapi.testclient import TestClient
 
 import traffic_engine.api.app as app_module
 from traffic_engine.domain.exceptions import SimulationConfigurationError
-from traffic_engine.domain.models import GeographicArea, SimulationConfig, SimulationRecord, SimulationStatus
+from traffic_engine.domain.models import (
+    GeographicArea,
+    SimulationConfig,
+    SimulationMetrics,
+    SimulationRecord,
+    SimulationState,
+    SimulationStatus,
+    SimulationStep,
+    StepVisualization,
+)
 
 
 class FakeListAreasUseCase:
@@ -65,7 +74,7 @@ class FakeGetSimulationUseCase:
 
 
 class FakeListSimulationStepsUseCase:
-    def execute(self, simulation_id: str):
+    def execute(self, simulation_id: str, allow_running: bool = False):
         from traffic_engine.domain.exceptions import SimulationNotReadyError
 
         raise SimulationNotReadyError("not ready")
@@ -229,3 +238,57 @@ def test_websocket_serializes_datetime_events() -> None:
     assert second_event["type"] == "status"
     assert second_event["status"] == "finished"
     assert isinstance(second_event["recorded_at"], str)
+
+
+def test_api_step_response_has_typed_metrics_and_visualization() -> None:
+    class FakeStepsUseCase:
+        def execute(self, simulation_id: str, allow_running: bool = False):
+            metrics = SimulationMetrics(
+                step_number=1, total_vehicles=2, avg_speed_kph=30.0,
+                density=0.1, throughput_veh_per_min=5.0, congestion_ratio=0.0,
+            )
+            state = SimulationState(
+                step_number=1, vehicles=[], total_vehicles=2,
+                active_vehicles=2, density=0.1,
+            )
+            viz = StepVisualization(
+                heat_density_points=[[19.43, -99.15, 1.0]],
+                heat_speed_points=[[19.43, -99.15, 30.0]],
+                flow_nodes=[],
+                flow_edges=[{"edge": ["A", "B", 0], "count": 2}],
+            )
+            return [
+                SimulationStep(
+                    simulation_id=simulation_id, step_number=1,
+                    metrics=metrics, state=state, visualization=viz,
+                )
+            ]
+
+    fake_container = type(
+        "FakeContainer",
+        (),
+        {
+            "get_simulation": FakeGetSimulationUseCase(),
+            "list_simulation_steps": FakeStepsUseCase(),
+            "runtime": FakeRuntime(),
+            "shutdown": FakeRuntime().shutdown,
+        },
+    )()
+
+    app_module.app.dependency_overrides[app_module.get_container] = lambda: fake_container
+    client = TestClient(app_module.app)
+    response = client.get("/simulations/sim-001/steps")
+    app_module.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    step = body[0]
+
+    assert step["metrics"]["avg_speed_kph"] == 30.0
+    assert step["metrics"]["total_vehicles"] == 2
+    assert "heat_density_points" not in step["metrics"]
+
+    assert step["visualization"]["heat_density_points"] == [[19.43, -99.15, 1.0]]
+    assert step["visualization"]["heat_speed_points"] == [[19.43, -99.15, 30.0]]
+    assert step["visualization"]["flow_edges"][0]["count"] == 2

@@ -476,11 +476,6 @@ class SimulationMetrics:
     density: float
     throughput_veh_per_min: float
     congestion_ratio: float
-    heat_density_points: List[List[float]] = field(default_factory=list)
-    heat_speed_points: List[List[float]] = field(default_factory=list)
-    heat_speed_density_points: List[List[float]] = field(default_factory=list)
-    flow_nodes: List[Dict[str, Any]] = field(default_factory=list)
-    flow_edges: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -490,11 +485,6 @@ class SimulationMetrics:
             "density": self.density,
             "throughput_veh_per_min": self.throughput_veh_per_min,
             "congestion_ratio": self.congestion_ratio,
-            "heat_density_points": self.heat_density_points,
-            "heat_speed_points": self.heat_speed_points,
-            "heat_speed_density_points": self.heat_speed_density_points,
-            "flow_nodes": self.flow_nodes,
-            "flow_edges": self.flow_edges,
         }
 
     @classmethod
@@ -506,9 +496,29 @@ class SimulationMetrics:
             density=float(payload["density"]),
             throughput_veh_per_min=float(payload["throughput_veh_per_min"]),
             congestion_ratio=float(payload["congestion_ratio"]),
+        )
+
+
+@dataclass(frozen=True)
+class StepVisualization:
+    heat_density_points: List[List[float]] = field(default_factory=list)
+    heat_speed_points: List[List[float]] = field(default_factory=list)
+    flow_nodes: List[Dict[str, Any]] = field(default_factory=list)
+    flow_edges: List[Dict[str, Any]] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "heat_density_points": self.heat_density_points,
+            "heat_speed_points": self.heat_speed_points,
+            "flow_nodes": self.flow_nodes,
+            "flow_edges": self.flow_edges,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Dict[str, Any]) -> "StepVisualization":
+        return cls(
             heat_density_points=[list(item) for item in payload.get("heat_density_points", [])],
             heat_speed_points=[list(item) for item in payload.get("heat_speed_points", [])],
-            heat_speed_density_points=[list(item) for item in payload.get("heat_speed_density_points", [])],
             flow_nodes=[dict(item) for item in payload.get("flow_nodes", [])],
             flow_edges=[dict(item) for item in payload.get("flow_edges", [])],
         )
@@ -554,6 +564,7 @@ class SimulationStep:
     step_number: int
     metrics: SimulationMetrics
     state: SimulationState
+    visualization: StepVisualization = field(default_factory=StepVisualization)
     recorded_at: datetime = field(default_factory=utc_now)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -561,6 +572,7 @@ class SimulationStep:
             "simulation_id": self.simulation_id,
             "step_number": self.step_number,
             "metrics": self.metrics.to_dict(),
+            "visualization": self.visualization.to_dict(),
             "state": self.state.to_dict(),
             "recorded_at": self.recorded_at,
         }
@@ -572,6 +584,7 @@ class SimulationStep:
             step_number=int(payload["step_number"]),
             metrics=SimulationMetrics.from_dict(payload["metrics"]),
             state=SimulationState.from_dict(payload["state"]),
+            visualization=StepVisualization.from_dict(payload.get("visualization") or {}),
             recorded_at=payload.get("recorded_at") or utc_now(),
         )
 
