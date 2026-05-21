@@ -92,10 +92,27 @@ class SimulationRecordResponse(BaseModel):
     config: dict[str, Any]
 
 
+class SimulationMetricsResponse(BaseModel):
+    step_number: int
+    total_vehicles: int
+    avg_speed_kph: float
+    density: float
+    throughput_veh_per_min: float
+    congestion_ratio: float
+
+
+class StepVisualizationResponse(BaseModel):
+    heat_density_points: list[list[float]]
+    heat_speed_points: list[list[float]]
+    flow_nodes: list[dict[str, Any]]
+    flow_edges: list[dict[str, Any]]
+
+
 class SimulationStepResponse(BaseModel):
     simulation_id: str
     step_number: int
-    metrics: dict[str, Any]
+    metrics: SimulationMetricsResponse
+    visualization: StepVisualizationResponse
     state: dict[str, Any]
     recorded_at: datetime
 

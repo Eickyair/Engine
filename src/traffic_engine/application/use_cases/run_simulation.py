@@ -67,12 +67,13 @@ class RunSimulationUseCase:
                     final_status = SimulationStatus.CANCELLED
                     break
 
-                state, metrics, done = model.step()
+                state, metrics, visualization, done = model.step()
                 step = SimulationStep(
                     simulation_id=record.simulation_id,
                     step_number=state.step_number,
                     metrics=metrics,
                     state=state,
+                    visualization=visualization,
                 )
                 self.repository.append_step(step)
                 self.repository.update_latest_step(record.simulation_id, latest_step=state.step_number)
