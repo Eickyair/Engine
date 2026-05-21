@@ -15,6 +15,10 @@ class BoundingBoxResponse(BaseModel):
     max_y: float
 
 
+class HealthResponse(BaseModel):
+    status: str
+
+
 class GeographicAreaSummaryResponse(BaseModel):
     area_id: str
     name: str
@@ -116,3 +120,39 @@ class SimulationStepResponse(BaseModel):
 class CancelSimulationResponse(BaseModel):
     simulation_id: str
     requested: bool
+
+
+class EndpointParameterDocument(BaseModel):
+    name: str
+    location: str
+    required: bool
+    schema_: dict[str, Any] = Field(alias="schema")
+    description: str | None = None
+
+
+class EndpointRequestBodyDocument(BaseModel):
+    required: bool
+    content_type: str
+    schema_: dict[str, Any] = Field(alias="schema")
+
+
+class EndpointResponseDocument(BaseModel):
+    description: str
+    content_type: str
+    schema_: dict[str, Any] = Field(alias="schema")
+
+
+class EndpointSchemaDocument(BaseModel):
+    path: str
+    method: str
+    operation_id: str | None = None
+    summary: str | None = None
+    description: str | None = None
+    parameters: list[EndpointParameterDocument]
+    request_body: EndpointRequestBodyDocument | None = None
+    responses: dict[str, EndpointResponseDocument]
+
+
+class ApiResponseModelsDocument(BaseModel):
+    source: str
+    endpoints: list[EndpointSchemaDocument]

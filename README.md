@@ -77,6 +77,7 @@ Puntos utiles:
 
 - Swagger UI: `http://127.0.0.1:8000/docs`
 - OpenAPI: `http://127.0.0.1:8000/openapi.json`
+- Schemas JSON por endpoint: `http://127.0.0.1:8000/api/response-models.json`
 - Healthcheck: `http://127.0.0.1:8000/health`
 
 ### 5. Abrir la mini UI de simulacion
@@ -156,6 +157,7 @@ docker compose down -v
 ## Endpoints principales
 
 - `GET /health`
+- `GET /api/response-models.json`
 - `GET /geographic-areas`
 - `GET /geographic-areas/{area_id}/topology`
 - `POST /simulations`

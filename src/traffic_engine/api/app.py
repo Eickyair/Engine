@@ -17,11 +17,17 @@ from ..domain.exceptions import (
 from ..domain.models import SimulationExecutionMode
 from .dependencies import Container, get_container
 from .schemas import (
+    ApiResponseModelsDocument,
     BoundingBoxResponse,
     CancelSimulationResponse,
     CreateSimulationRequest,
+    EndpointParameterDocument,
+    EndpointRequestBodyDocument,
+    EndpointResponseDocument,
+    EndpointSchemaDocument,
     GeographicAreaTopologyResponse,
     GeographicAreaSummaryResponse,
+    HealthResponse,
     SimulationMetricsResponse,
     SimulationRecordResponse,
     SimulationStepResponse,
@@ -30,6 +36,9 @@ from .schemas import (
     TopologyNodeResponse,
     TopologyResponse,
 )
+
+
+HTTP_METHODS = {"delete", "get", "head", "options", "patch", "post", "put", "trace"}
 
 
 def _record_response(record: Any) -> SimulationRecordResponse:
@@ -65,6 +74,135 @@ def _topology_response(area: Any) -> GeographicAreaTopologyResponse:
     )
 
 
+def _api_response_models_document(app: FastAPI) -> ApiResponseModelsDocument:
+    openapi_schema = app.openapi()
+    schemas = openapi_schema.get("components", {}).get("schemas", {})
+    endpoints: list[EndpointSchemaDocument] = []
+
+    for path, path_item in sorted(openapi_schema.get("paths", {}).items()):
+        if not isinstance(path_item, dict):
+            continue
+        for method, operation in sorted(path_item.items()):
+            if method not in HTTP_METHODS or not isinstance(operation, dict):
+                continue
+            responses = _json_responses_from_operation(operation, schemas)
+            if not responses:
+                continue
+            endpoints.append(
+                EndpointSchemaDocument(
+                    path=path,
+                    method=method.upper(),
+                    operation_id=operation.get("operationId"),
+                    summary=operation.get("summary"),
+                    description=operation.get("description"),
+                    parameters=_parameters_from_operation(operation, schemas),
+                    request_body=_request_body_from_operation(operation, schemas),
+                    responses=responses,
+                )
+            )
+
+    return ApiResponseModelsDocument(
+        source="/openapi.json",
+        endpoints=endpoints,
+    )
+
+
+def _parameters_from_operation(
+    operation: dict[str, Any],
+    schemas: dict[str, Any],
+) -> list[EndpointParameterDocument]:
+    parameters: list[EndpointParameterDocument] = []
+
+    for parameter in operation.get("parameters", []):
+        if not isinstance(parameter, dict):
+            continue
+        parameters.append(
+            EndpointParameterDocument(
+                name=parameter.get("name", ""),
+                location=parameter.get("in", ""),
+                required=bool(parameter.get("required", False)),
+                description=parameter.get("description"),
+                schema=_public_schema(parameter.get("schema", {}), schemas),
+            )
+        )
+
+    return parameters
+
+
+def _request_body_from_operation(
+    operation: dict[str, Any],
+    schemas: dict[str, Any],
+) -> EndpointRequestBodyDocument | None:
+    request_body = operation.get("requestBody", {})
+    if not isinstance(request_body, dict):
+        return None
+
+    json_content = _json_content(request_body)
+    if json_content is None:
+        return None
+
+    return EndpointRequestBodyDocument(
+        required=bool(request_body.get("required", False)),
+        content_type="application/json",
+        schema=_public_schema(json_content.get("schema", {}), schemas),
+    )
+
+
+def _json_responses_from_operation(
+    operation: dict[str, Any],
+    schemas: dict[str, Any],
+) -> dict[str, EndpointResponseDocument]:
+    responses: dict[str, EndpointResponseDocument] = {}
+
+    for status_code, response in sorted(operation.get("responses", {}).items()):
+        if not isinstance(response, dict):
+            continue
+        json_content = _json_content(response)
+        if json_content is None:
+            continue
+        responses[status_code] = EndpointResponseDocument(
+            description=response.get("description", ""),
+            content_type="application/json",
+            schema=_public_schema(json_content.get("schema", {}), schemas),
+        )
+
+    return responses
+
+
+def _json_content(document: dict[str, Any]) -> dict[str, Any] | None:
+    content = document.get("content", {})
+    if not isinstance(content, dict):
+        return None
+    json_content = content.get("application/json")
+    if not isinstance(json_content, dict):
+        return None
+    return json_content
+
+
+def _public_schema(schema: Any, schemas: dict[str, Any], seen: set[str] | None = None) -> Any:
+    if seen is None:
+        seen = set()
+    if isinstance(schema, list):
+        return [_public_schema(item, schemas, seen) for item in schema]
+    if not isinstance(schema, dict):
+        return schema
+
+    ref = schema.get("$ref")
+    if isinstance(ref, str):
+        schema_name = ref.rsplit("/", 1)[-1]
+        if schema_name in seen:
+            return {"type": "object"}
+        referenced_schema = schemas.get(schema_name, {})
+        return _public_schema(referenced_schema, schemas, seen | {schema_name})
+
+    public_schema: dict[str, Any] = {}
+    for key, value in schema.items():
+        if key == "title":
+            continue
+        public_schema[key] = _public_schema(value, schemas, seen)
+    return public_schema
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Traffic Engine API", version="0.1.0")
 
@@ -74,9 +212,13 @@ def create_app() -> FastAPI:
         await container.shutdown()
         get_container.cache_clear()
 
-    @app.get("/health")
-    async def health() -> dict[str, str]:
-        return {"status": "ok"}
+    @app.get("/health", response_model=HealthResponse)
+    async def health() -> HealthResponse:
+        return HealthResponse(status="ok")
+
+    @app.get("/api/response-models.json", response_model=ApiResponseModelsDocument)
+    async def api_response_models() -> ApiResponseModelsDocument:
+        return _api_response_models_document(app)
 
     @app.get("/geographic-areas", response_model=list[GeographicAreaSummaryResponse])
     async def list_geographic_areas(
