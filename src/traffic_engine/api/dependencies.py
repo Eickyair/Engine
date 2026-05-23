@@ -16,6 +16,7 @@ from ..application.use_cases import (
     RunSimulationUseCase,
 )
 from ..infrastructure import (
+    GTFSTrafficLightProvider,
     InMemoryLiveEventBus,
     InProcessSimulationRuntime,
     MongoGeographicAreaRepository,
@@ -56,7 +57,7 @@ def get_container() -> Container:
         event_bus=event_bus,
         route_provider=ShortestPathRouteProvider(),
         cellular_model=NagelCellularModel(allow_lane_changes=True),
-        traffic_light_provider=RandomTrafficLightProvider(),
+        traffic_light_provider=GTFSTrafficLightProvider(fallback=RandomTrafficLightProvider()),
     )
     return Container(
         bootstrap_geographic_areas=BootstrapGeographicAreasUseCase(

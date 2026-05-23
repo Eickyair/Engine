@@ -1,13 +1,139 @@
-"""Initial provider implementations for the simulation engine."""
+"""Provider implementations for the simulation engine."""
 
 from __future__ import annotations
 
+import csv
 import heapq
+import io
+import logging
+import os
+import time
+import zipfile
 from math import floor
 from random import Random
 
 from ..domain.exceptions import RouteSelectionError
 from ..domain.models import EdgeId, SimulationConfig, TopologyData, TrafficLight, TrafficLightCycle, Vehicle
+
+logger = logging.getLogger(__name__)
+
+_GTFS_API_URL = "https://metrobus-gtfs.sinopticoplus.com/gtfs-api/partnerValidation"
+_GTFS_BBOX_MARGIN = 0.008   # ~900 m de margen alrededor del grafo
+
+
+class GTFSStopFetcher:
+    """Descarga paradas de Metrobús desde el API GTFS con caché de 5 minutos."""
+
+    _CACHE_TTL = 300
+
+    def __init__(self) -> None:
+        self._stops: list[tuple[float, float]] | None = None
+        self._fetched_at: float = 0.0
+
+    def get_stops(self) -> list[tuple[float, float]]:
+        if self._stops is None or (time.monotonic() - self._fetched_at) > self._CACHE_TTL:
+            self._stops = self._download()
+            self._fetched_at = time.monotonic()
+        return self._stops
+
+    def _download(self) -> list[tuple[float, float]]:
+        import requests  # opcional en runtime; no depende del resto del paquete
+
+        credentials = {
+            "usuario": os.environ.get("GTFS_USER", "rodri.mo7576"),
+            "senha":   os.environ.get("GTFS_PASS", "15Sj98-fI$"),
+        }
+        auth = requests.post(_GTFS_API_URL, json=credentials, timeout=15)
+        auth.raise_for_status()
+
+        zip_resp = requests.get(auth.json()["urlStatic"], timeout=60)
+        zip_resp.raise_for_status()
+
+        stops: list[tuple[float, float]] = []
+        with zipfile.ZipFile(io.BytesIO(zip_resp.content)) as zf:
+            with zf.open("stops.txt") as raw:
+                for row in csv.DictReader(io.TextIOWrapper(raw, encoding="utf-8-sig")):
+                    try:
+                        stops.append((float(row["stop_lat"]), float(row["stop_lon"])))
+                    except (KeyError, ValueError):
+                        continue
+
+        logger.info("GTFS: %d paradas descargadas", len(stops))
+        return stops
+
+
+class GTFSTrafficLightProvider:
+    """
+    Coloca semáforos en los nodos más cercanos a las paradas reales de Metrobús.
+
+    Implementa el mismo Protocol que RandomTrafficLightProvider — la firma
+    provide(topology, config) es idéntica, por lo que es un drop-in replacement.
+
+    Si el API GTFS falla o no hay paradas en el área del grafo, usa el
+    proveedor de respaldo (por defecto RandomTrafficLightProvider).
+    """
+
+    def __init__(self, fallback: RandomTrafficLightProvider | None = None) -> None:
+        self._fetcher = GTFSStopFetcher()
+        self._fallback = fallback or RandomTrafficLightProvider()
+
+    def provide(self, topology: TopologyData, config: SimulationConfig) -> list[TrafficLight]:
+        try:
+            lights = self._from_stops(topology, config)
+            logger.info("GTFSTrafficLightProvider: %d semáforos desde paradas Metrobús", len(lights))
+            return lights
+        except Exception as exc:
+            logger.warning("GTFS provider falló (%s) — usando fallback", exc)
+            return self._fallback.provide(topology, config)
+
+    def _from_stops(
+        self, topology: TopologyData, config: SimulationConfig
+    ) -> list[TrafficLight]:
+        stops = self._fetcher.get_stops()
+
+        bbox = topology.bbox
+        m = _GTFS_BBOX_MARGIN
+        in_bbox = [
+            (lat, lon) for lat, lon in stops
+            if (bbox.min_y - m) <= lat <= (bbox.max_y + m)
+            and (bbox.min_x - m) <= lon <= (bbox.max_x + m)
+        ]
+        if not in_bbox:
+            raise ValueError(
+                f"Sin paradas GTFS en el área del grafo "
+                f"(lat {bbox.min_y:.4f}–{bbox.max_y:.4f}, "
+                f"lon {bbox.min_x:.4f}–{bbox.max_x:.4f})"
+            )
+
+        # Solo intersecciones válidas (grado >= 3) como candidatas
+        valid = set(_valid_intersections(topology))
+        node_coords = [
+            (nid, nd.x, nd.y)
+            for nid, nd in topology.nodes.items()
+            if nid in valid
+        ]
+        if not node_coords:
+            raise ValueError("No hay intersecciones válidas en la topología.")
+
+        # Para cada parada en el bbox, encontrar el nodo más cercano
+        selected: dict[str, bool] = {}
+        for lat, lon in in_bbox:
+            nearest = min(node_coords, key=lambda t: (t[1] - lon) ** 2 + (t[2] - lat) ** 2)
+            selected[nearest[0]] = True
+
+        incoming = _incoming_nodes(topology)
+        cycle = TrafficLightCycle(
+            green_steps=config.traffic_light_green_steps,
+            red_steps=config.traffic_light_red_steps,
+        )
+        return [
+            TrafficLight(
+                node_id=nid,
+                applies_to=sorted(incoming.get(nid, [])),
+                cycle=cycle,
+            )
+            for nid in selected
+        ]
 
 
 class RandomTrafficLightProvider:
