@@ -1,0 +1,67 @@
+# --- Git ---
+.git/
+.gitignore
+.gitattributes
+
+# --- Python bytecode & packaging artifacts ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+
+# --- Test / type-check caches ---
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# --- IDE / editor cruft ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- OS junk ---
+.DS_Store
+Thumbs.db
+
+# --- Local secrets and per-env config (NEVER bake into image) ---
+.env
+.env.*
+!.env.example
+
+# --- Dev tooling / docs not needed inside the image ---
+.github/
+docker/
+docker-compose.yml
+DOCKER.md
+README.pdf
+traffic_engine_minimal.postman_collection.json
+Makefile
+
+# --- Runtime / cache produced by the app ---
+cache/
+*.db
+.states
+.web
+assets/external/
+
+# --- Dockerfile itself doesn't need to be inside the image ---
+Dockerfile
+.dockerignore
