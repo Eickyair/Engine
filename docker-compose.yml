@@ -40,5 +40,36 @@ services:
       - mongo_data:/data/db
       - ./docker/mongo/init:/docker-entrypoint-initdb.d:ro
 
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: traffic-engine:local
+    container_name: ${COMPOSE_PROJECT_NAME}_api
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # Inside the compose network, reach mongo via the service alias.
+      # This overrides MONGODB_URI from .env (which points at 127.0.0.1 for dev).
+      MONGODB_URI: "mongodb://${MONGO_APP_USER}:${MONGO_APP_PASSWORD}@mongodb:27017/${MONGO_APP_DATABASE}?authSource=${MONGO_APP_DATABASE}&authMechanism=SCRAM-SHA-256&directConnection=true&maxPoolSize=30&minPoolSize=1&maxIdleTimeMS=60000&connectTimeoutMS=5000&serverSelectionTimeoutMS=5000&socketTimeoutMS=10000&waitQueueTimeoutMS=5000"
+      UVICORN_WORKERS: "${UVICORN_WORKERS:-2}"
+    ports:
+      - "${API_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   mongo_data:
