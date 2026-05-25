@@ -1,0 +1,33 @@
+# docker-compose.dev.yml — local development overlay.
+#
+# Aplicar con:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# O con make:
+#   make dev
+#
+# Que cambia vs el compose base (produccion):
+# - Monta ./src dentro del contenedor como bind read-only.
+# - PYTHONPATH=/build/src hace que Python importe desde el mount en vez del
+#   paquete instalado en /opt/venv (PYTHONPATH se evalua antes de site-packages).
+# - uvicorn corre con --reload + un solo worker para que --reload sea util.
+# - restart: "no" para que un crash sea visible inmediatamente en consola.
+#
+# Mongo no se toca; se hereda del compose base.
+
+services:
+  api:
+    volumes:
+      - ./src:/build/src:ro
+    environment:
+      PYTHONPATH: "/build/src"
+      UVICORN_WORKERS: "1"
+    command:
+      - sh
+      - -c
+      - >
+        exec uvicorn traffic_engine.api.app:app
+        --host 0.0.0.0
+        --port 8000
+        --reload
+        --reload-dir /build/src
+    restart: "no"
