@@ -1,0 +1,71 @@
+name: Docker Build & Integration
+
+# Builds the multi-stage image (which runs pytest as a stage, so the build
+# fails if any test fails), then brings up the full compose stack and
+# smoke-tests the API against /health from the runner.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+jobs:
+  build-and-smoke:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      COMPOSE_PROJECT_NAME: traffic-engine
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (test stage runs inside the build)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: traffic-engine:local
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Prepare .env from example
+        run: cp .env.example .env
+
+      - name: Bring up the stack (no rebuild — reuse the image we just built)
+        run: docker compose up -d --no-build
+
+      - name: Wait for api to become healthy
+        run: |
+          set -e
+          name="${COMPOSE_PROJECT_NAME}_api"
+          for i in $(seq 1 24); do
+            status=$(docker inspect --format='{{.State.Health.Status}}' "$name" 2>/dev/null || echo "starting")
+            echo "[$i] api health: $status"
+            if [ "$status" = "healthy" ]; then exit 0; fi
+            if [ "$status" = "unhealthy" ]; then
+              echo "::error::api became unhealthy"
+              docker compose logs api
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "::error::api did not become healthy within timeout"
+          docker compose logs api
+          exit 1
+
+      - name: Hit /health from host
+        run: curl -fsS http://127.0.0.1:8000/health
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
