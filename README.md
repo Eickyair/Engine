@@ -2,6 +2,20 @@
 
 API de simulacion de trafico basada en FastAPI, NaSch y MongoDB.
 
+## Quickstart con Docker
+
+Para equipos consumidores que solo necesitan la API corriendo en local (integracion, pruebas, demo) **no hace falta instalar Python ni dependencias**:
+
+```bash
+cp .env.example .env
+docker compose up -d
+curl http://127.0.0.1:8000/health
+```
+
+Esto construye la imagen (ejecutando todos los tests como parte del build), levanta MongoDB y deja la API en `http://127.0.0.1:8000`. Swagger UI en `/docs`.
+
+Guia completa (multi-stage, variables, deploy patterns, troubleshooting): [DOCKER.md](DOCKER.md).
+
 ## Requisitos
 
 - Python 3.10 o superior
