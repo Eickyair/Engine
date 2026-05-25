@@ -45,6 +45,7 @@ dev = [
     "isort>=5.9.0",
     "flake8>=3.9.0",
     "mypy>=0.910",
+    "httpx>=0.24.0",
 ]
 docs = [
     "sphinx>=4.0.0",
