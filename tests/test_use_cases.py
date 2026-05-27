@@ -79,6 +79,10 @@ class FakeRuntime:
         self.started: list[str] = []
         self.cancelled: list[str] = []
 
+    @property
+    def active_count(self) -> int:
+        return len(self.started) - len(self.cancelled)
+
     def start(self, simulation_id, job_factory) -> None:
         self.started.append(simulation_id)
         cancel_event = asyncio.Event()
