@@ -2,6 +2,23 @@
 
 API de simulacion de trafico basada en FastAPI, NaSch y MongoDB.
 
+## Equipo colaborador
+
+Traffic Engine refleja trabajo colaborativo en simulacion, backend y producto tecnico. Para una revision rapida de talento, este es el listado de colaboracion verificable en el historial Git del proyecto.
+
+- 7 identidades de colaboracion registradas
+- 37 commits trazables en el repositorio
+
+| Colaborador | Referencia en historial Git | Commits |
+| --- | --- | ---: |
+| Erick Aguilar | Identidad principal | 22 |
+| DayYSG | Alias de contribucion | 5 |
+| Emilio Gonzalez Iniestra | Identidad principal | 3 |
+| Luis Nava | Identidad principal | 2 |
+| Rodrigo Moreno | Identidad principal | 2 |
+| thecommiter | Alias de contribucion | 2 |
+| Eduardo Zavala Sanchez | Identidad principal | 1 |
+
 ## Requisitos
 
 - Python 3.10 o superior
