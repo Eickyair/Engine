@@ -60,6 +60,7 @@ class RunSimulationUseCase:
         )
         model.reset(topology=area.topology, config=definition.config)
         final_status = SimulationStatus.FINISHED
+        loop = asyncio.get_running_loop()
 
         try:
             for _ in range(record.config.max_steps):
@@ -67,7 +68,9 @@ class RunSimulationUseCase:
                     final_status = SimulationStatus.CANCELLED
                     break
 
-                state, metrics, visualization, done = model.step()
+                state, metrics, visualization, done = await loop.run_in_executor(
+                    None, model.step
+                )
                 step = SimulationStep(
                     simulation_id=record.simulation_id,
                     step_number=state.step_number,
@@ -75,8 +78,13 @@ class RunSimulationUseCase:
                     state=state,
                     visualization=visualization,
                 )
-                self.repository.append_step(step)
-                self.repository.update_latest_step(record.simulation_id, latest_step=state.step_number)
+                await loop.run_in_executor(None, self.repository.append_step, step)
+                await loop.run_in_executor(
+                    None,
+                    self.repository.update_latest_step,
+                    record.simulation_id,
+                    state.step_number,
+                )
                 await self.event_bus.publish(
                     record.simulation_id,
                     {
@@ -104,7 +112,12 @@ class RunSimulationUseCase:
         finally:
             if cancel_event.is_set() and final_status == SimulationStatus.FINISHED:
                 final_status = SimulationStatus.CANCELLED
-            self.repository.update_status(record.simulation_id, status=final_status.value)
+            await loop.run_in_executor(
+                None,
+                self.repository.update_status,
+                record.simulation_id,
+                final_status.value,
+            )
             await self.event_bus.publish(
                 record.simulation_id,
                 {
