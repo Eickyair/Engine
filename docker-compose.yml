@@ -1,4 +1,25 @@
 services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME}_api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      MONGO_URI: mongodb://${MONGO_APP_USER}:${MONGO_APP_PASSWORD}@mongodb:27017/${MONGO_APP_DATABASE}?authSource=${MONGO_APP_DATABASE}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   mongodb:
     image: mongo:7.0.17
     container_name: ${COMPOSE_PROJECT_NAME}_mongo
