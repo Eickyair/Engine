@@ -15,6 +15,7 @@ from ..application.use_cases import (
     ListSimulationStepsUseCase,
     RunSimulationUseCase,
 )
+from ..config import MAX_CONCURRENT_SIMULATIONS
 from ..infrastructure import (
     InMemoryLiveEventBus,
     InProcessSimulationRuntime,
@@ -50,7 +51,7 @@ def get_container() -> Container:
     area_repository = MongoGeographicAreaRepository()
     simulation_repository = MongoSimulationRepository()
     event_bus = InMemoryLiveEventBus()
-    runtime = InProcessSimulationRuntime()
+    runtime = InProcessSimulationRuntime(max_concurrent=MAX_CONCURRENT_SIMULATIONS)
     run_simulation = RunSimulationUseCase(
         repository=simulation_repository,
         event_bus=event_bus,

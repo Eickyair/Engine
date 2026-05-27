@@ -12,7 +12,13 @@ from ...config import (
     DEFAULT_SPAWN_RATE,
     DEFAULT_TICK_INTERVAL_MS,
 )
-from ...domain.exceptions import GeographicAreaNotFoundError, SimulationConfigurationError
+
+from ...config import MAX_CONCURRENT_SIMULATIONS
+from ...domain.exceptions import (
+    GeographicAreaNotFoundError,
+    SimulationCapacityExceededError,
+    SimulationConfigurationError,
+)
 from ...domain.models import (
     GeographicArea,
     SimulationConfig,
@@ -85,6 +91,10 @@ class CreateSimulationUseCase:
                 enable_lane_changes=enable_lane_changes,
             ),
         )
+        if self.runtime.active_count >= MAX_CONCURRENT_SIMULATIONS:
+            raise SimulationCapacityExceededError(
+                f"Server has reached the maximum of {MAX_CONCURRENT_SIMULATIONS} concurrent simulations."
+            )
         stored = self.simulation_repository.create(record)
         self.runtime.start(
             stored.simulation_id,

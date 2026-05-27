@@ -47,9 +47,14 @@ class InMemoryLiveEventBus:
 
 
 class InProcessSimulationRuntime:
-    def __init__(self) -> None:
+    def __init__(self, max_concurrent: int = 50) -> None:
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._cancel_events: dict[str, asyncio.Event] = {}
+        self._max_concurrent = max_concurrent
+
+    @property
+    def active_count(self) -> int:
+        return sum(1 for t in self._tasks.values() if not t.done())
 
     def start(
         self,

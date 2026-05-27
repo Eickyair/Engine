@@ -1,5 +1,7 @@
 """Shared configuration defaults for the traffic engine."""
 
+import os
+
 CELL_SIZE_M = 7.5
 TICK_SECONDS = 1.0
 V_MAX_CELLS = 5
@@ -9,3 +11,4 @@ DEFAULT_MAX_VEHICLES = 60
 DEFAULT_MAX_STEPS = 120
 DEFAULT_SPAWN_RATE = 0.2
 DEFAULT_TICK_INTERVAL_MS = 100
+MAX_CONCURRENT_SIMULATIONS = int(os.getenv("MAX_CONCURRENT_SIMULATIONS", "50"))

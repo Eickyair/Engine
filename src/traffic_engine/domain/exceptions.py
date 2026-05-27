@@ -25,5 +25,9 @@ class SimulationConfigurationError(TrafficEngineError):
     """Raised when a simulation model configuration is invalid."""
 
 
+class SimulationCapacityExceededError(TrafficEngineError):
+    """Raised when the server has reached the maximum number of concurrent simulations."""
+
+
 class RouteSelectionError(TrafficEngineError):
     """Raised when no valid topological route can be selected."""

@@ -10,6 +10,7 @@ from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconn
 from ..domain.exceptions import (
     GeographicAreaNotFoundError,
     SimulationCancellationError,
+    SimulationCapacityExceededError,
     SimulationConfigurationError,
     SimulationNotFoundError,
     SimulationNotReadyError,
@@ -281,6 +282,8 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except SimulationConfigurationError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except SimulationCapacityExceededError as exc:
+            raise HTTPException(status_code=429, detail=str(exc)) from exc
         return _record_response(record)
 
     @app.get("/simulations/{simulation_id}", response_model=SimulationRecordResponse)

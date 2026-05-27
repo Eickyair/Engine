@@ -65,3 +65,7 @@ class SimulationRuntime(Protocol):
 
     def is_running(self, simulation_id: str) -> bool:
         ...
+
+    @property
+    def active_count(self) -> int:
+        ...
