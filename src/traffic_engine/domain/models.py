@@ -257,8 +257,12 @@ class SimulationConfig:
     traffic_light_green_steps: int = 10
     traffic_light_red_steps: int = 10
     enable_lane_changes: bool = False
+    blocked_lanes: Dict[EdgeId, List[int]] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
+        blocked_lanes_serialized = {
+            f"{u}|{v}|{k}": lanes for (u, v, k), lanes in self.blocked_lanes.items()
+        }
         return {
             "initial_vehicles": self.initial_vehicles,
             "max_vehicles": self.max_vehicles,
@@ -273,10 +277,32 @@ class SimulationConfig:
             "traffic_light_green_steps": self.traffic_light_green_steps,
             "traffic_light_red_steps": self.traffic_light_red_steps,
             "enable_lane_changes": self.enable_lane_changes,
+            "blocked_lanes": blocked_lanes_serialized,
         }
 
     @classmethod
     def from_dict(cls, payload: Dict[str, Any]) -> "SimulationConfig":
+        blocked_lanes_raw = payload.get("blocked_lanes", {})
+        blocked_lanes_parsed: Dict[EdgeId, List[int]] = {}
+        for key_str, lanes in blocked_lanes_raw.items():
+            if "|" in key_str:
+                parts = key_str.split("|")
+                if len(parts) == 3:
+                    try:
+                        u, v, k_str = parts
+                        blocked_lanes_parsed[(u, v, int(k_str))] = list(lanes)
+                    except ValueError:
+                        pass
+            else:
+                parts = key_str.split("-")
+                if len(parts) >= 3:
+                    try:
+                        k_str = parts[-1]
+                        v = parts[-2]
+                        u = "-".join(parts[:-2])
+                        blocked_lanes_parsed[(u, v, int(k_str))] = list(lanes)
+                    except ValueError:
+                        pass
         return cls(
             initial_vehicles=int(payload["initial_vehicles"]),
             max_vehicles=int(payload["max_vehicles"]),
@@ -293,6 +319,7 @@ class SimulationConfig:
             traffic_light_green_steps=max(1, int(payload.get("traffic_light_green_steps", 10))),
             traffic_light_red_steps=max(0, int(payload.get("traffic_light_red_steps", 10))),
             enable_lane_changes=bool(payload.get("enable_lane_changes", False)),
+            blocked_lanes=blocked_lanes_parsed,
         )
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from uuid import uuid4
+from typing import Dict, List
 
 from ...config import (
     DEFAULT_INITIAL_VEHICLES,
@@ -20,6 +21,7 @@ from ...domain.exceptions import (
     SimulationConfigurationError,
 )
 from ...domain.models import (
+    EdgeId,
     GeographicArea,
     SimulationConfig,
     SimulationExecutionMode,
@@ -60,6 +62,7 @@ class CreateSimulationUseCase:
         traffic_light_green_steps: int = 10,
         traffic_light_red_steps: int = 10,
         enable_lane_changes: bool = False,
+        blocked_lanes: Dict[str, List[int]] | None = None,
     ) -> SimulationRecord:
         area = self.area_repository.get(area_id)
         if area is None:
@@ -70,6 +73,51 @@ class CreateSimulationUseCase:
             raise SimulationConfigurationError(
                 "Lane changes require at least two lanes in the default lane configuration."
             )
+
+        parsed_blocked_lanes: Dict[EdgeId, List[int]] = {}
+        if blocked_lanes:
+            for key_str, lane_indices in blocked_lanes.items():
+                if "|" in key_str:
+                    parts = key_str.split("|")
+                    if len(parts) != 3:
+                        raise SimulationConfigurationError(
+                            f"Invalid edge key format: '{key_str}'. Expected format: 'u|v|key'"
+                        )
+                    u, v, k_str = parts
+                else:
+                    parts = key_str.split("-")
+                    if len(parts) < 3:
+                        raise SimulationConfigurationError(
+                            f"Invalid edge key format: '{key_str}'. Expected format: 'u|v|key' or 'u-v-key'"
+                        )
+                    k_str = parts[-1]
+                    v = parts[-2]
+                    u = "-".join(parts[:-2])
+
+                try:
+                    k = int(k_str)
+                    edge_id: EdgeId = (u, v, k)
+
+                    if edge_id not in area.topology.edges:
+                        raise SimulationConfigurationError(
+                            f"Edge '{key_str}' does not exist in geographic area '{area_id}'."
+                        )
+
+                    edge_data = area.topology.edges[edge_id]
+                    effective_lanes = max(1, edge_data.lanes, normalized_default_lanes)
+
+                    for lane_idx in lane_indices:
+                        if not 0 <= lane_idx < effective_lanes:
+                            raise SimulationConfigurationError(
+                                f"Lane {lane_idx} is invalid for edge '{key_str}'. "
+                                f"Edge has {effective_lanes} effective lanes (0-{effective_lanes - 1})."
+                            )
+
+                    parsed_blocked_lanes[edge_id] = lane_indices
+                except (ValueError, IndexError) as exc:
+                    raise SimulationConfigurationError(
+                        f"Failed to parse edge key '{key_str}': {exc}"
+                    ) from exc
 
         record = SimulationRecord(
             simulation_id=uuid4().hex,
@@ -89,6 +137,7 @@ class CreateSimulationUseCase:
                 traffic_light_green_steps=max(1, traffic_light_green_steps),
                 traffic_light_red_steps=max(0, traffic_light_red_steps),
                 enable_lane_changes=enable_lane_changes,
+                blocked_lanes=parsed_blocked_lanes,
             ),
         )
         if self.runtime.active_count >= MAX_CONCURRENT_SIMULATIONS:

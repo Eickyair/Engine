@@ -43,7 +43,12 @@ class RandomTrafficLightProvider:
 
 
 class ShortestPathRouteProvider:
-    def choose_route(self, topology: TopologyData, random: Random) -> list[EdgeId]:
+    def choose_route(
+        self,
+        topology: TopologyData,
+        random: Random,
+        excluded_edges: set | None = None,
+    ) -> list[EdgeId]:
         if not topology.edges:
             raise RouteSelectionError("The grid has no traversable cells.")
         boundary_nodes = [
@@ -52,11 +57,12 @@ class ShortestPathRouteProvider:
         if len(boundary_nodes) < 2:
             raise RouteSelectionError("At least two valid traversable nodes are required.")
 
+        excluded = excluded_edges or set()
         for _ in range(20):
             origin, destination = random.sample(boundary_nodes, 2)
-            route = self._shortest_edge_path(topology, origin, destination)
+            route = self._shortest_edge_path(topology, origin, destination, excluded)
             if route:
-                return self._select_parallel_edge_variants(topology, route, random)
+                return self._select_parallel_edge_variants(topology, route, random, excluded)
         raise RouteSelectionError("No reachable origin/destination pair could be selected.")
 
     def _shortest_edge_path(
@@ -64,8 +70,10 @@ class ShortestPathRouteProvider:
         topology: TopologyData,
         origin: str,
         destination: str,
+        excluded_edges: set | None = None,
     ) -> list[EdgeId]:
         adjacency = topology.outgoing_edges()
+        excluded = excluded_edges or set()
         distances: dict[str, float] = {origin: 0.0}
         previous: dict[str, EdgeId] = {}
         heap: list[tuple[float, str]] = [(0.0, origin)]
@@ -77,6 +85,8 @@ class ShortestPathRouteProvider:
             if distance > distances.get(node_id, float("inf")):
                 continue
             for edge_id in adjacency.get(node_id, []):
+                if edge_id in excluded:
+                    continue
                 edge = topology.edges[edge_id]
                 next_node = edge_id[1]
                 candidate = distance + edge.travel_time_sec
@@ -103,9 +113,10 @@ class ShortestPathRouteProvider:
         topology: TopologyData,
         route: list[EdgeId],
         random: Random,
+        excluded_edges: set | None = None,
     ) -> list[EdgeId]:
         return [
-            self._choose_parallel_edge(topology, edge_id, random)
+            self._choose_parallel_edge(topology, edge_id, random, excluded_edges)
             for edge_id in route
         ]
 
@@ -114,15 +125,20 @@ class ShortestPathRouteProvider:
         topology: TopologyData,
         edge_id: EdgeId,
         random: Random,
+        excluded_edges: set | None = None,
     ) -> EdgeId:
+        excluded = excluded_edges or set()
         origin, destination, _ = edge_id
         candidates = [
             candidate_id
             for candidate_id in topology.edges
             if candidate_id[0] == origin and candidate_id[1] == destination
+            and candidate_id not in excluded
         ]
-        if len(candidates) <= 1:
+        if not candidates:
             return edge_id
+        if len(candidates) == 1:
+            return candidates[0]
         weights = [max(1, topology.edges[candidate_id].lanes) for candidate_id in candidates]
         return random.choices(candidates, weights=weights, k=1)[0]
 
