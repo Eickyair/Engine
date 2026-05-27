@@ -14,6 +14,46 @@ Las respuestas de topologia, schemas y steps pueden ser muy grandes; aqui se mue
 | --- | --- |
 | `status` | Estado basico de salud de la API. `ok` indica que responde correctamente. |
 
+## GET `http://127.0.0.1:8000/api/response-models.json`
+
+Devuelve el esquema de todos los endpoints de la API extraido del OpenAPI en tiempo de ejecucion.
+
+*Muestra recortada: la respuesta real incluye todos los endpoints registrados.*
+
+```json
+{
+  "source": "/openapi.json",
+  "endpoints": [
+    {
+      "path": "/geographic-areas",
+      "method": "GET",
+      "operation_id": "list_geographic_areas",
+      "summary": null,
+      "description": null,
+      "parameters": [],
+      "request_body": null,
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content_type": "application/json",
+          "schema": {}
+        }
+      }
+    }
+  ]
+}
+```
+
+| Campo | Descripcion |
+| --- | --- |
+| `source` | Ruta del documento OpenAPI del que se extrajeron los esquemas |
+| `endpoints[].path` | Ruta del endpoint |
+| `endpoints[].method` | Metodo HTTP en mayusculas |
+| `endpoints[].operation_id` | Identificador de operacion generado por FastAPI |
+| `endpoints[].parameters` | Lista de parametros de ruta, query o header |
+| `endpoints[].request_body` | Esquema del cuerpo de la peticion, si aplica |
+| `endpoints[].responses` | Mapa de codigo HTTP a esquema de respuesta |
+
 ## GET `http://127.0.0.1:8000/geographic-areas`
 
 Devuelve un listado de areas geograficas preprocesadas, con la finalidad de tener un catalogo de colonias o alcaldias en donde ejecutar simulaciones.
@@ -141,6 +181,12 @@ Muestra recortada: la respuesta real incluye todos los `nodes` y `edges` del are
 | `topology.bbox` | Limites geograficos del grafo. |
 
 ## POST `http://127.0.0.1:8000/simulations`
+
+Crea una nueva simulacion sobre un area geografica previamente cargada y la pone en estado `running` de inmediato.
+
+- `404` — el `area_id` indicado no existe
+- `422` — parametros de configuracion invalidos
+- `429` — el servidor ha alcanzado el maximo de simulaciones concurrentes permitidas
 
 Respuesta usando `area_id` valido `condesa-cuauht-moc-ciudad-de-m-xico-mexico`.
 
@@ -418,3 +464,60 @@ Se envia cuando la simulacion termina o se cancela.
 | `status` | Estado final: `finished` o `cancelled`. |
 
 Si se cancela una simulacion en curso, el evento final usa `status: "cancelled"`.
+
+## WS `ws://127.0.0.1:8000/simulations/{simulation_id}/replay`
+
+Reproduce todos los pasos ya grabados de una simulacion. El `simulation_id` identifica la simulacion a reproducir; si no existe, el servidor cierra la conexion con `WS_1008_POLICY_VIOLATION`. A diferencia del WebSocket en vivo, este endpoint acepta simulaciones en cualquier estado.
+
+Envia todos los pasos almacenados como eventos `step` y termina con un evento `status`.
+
+### Evento `step` (replay)
+
+```json
+{
+  "type": "step",
+  "simulation_id": "efa6f5be62084322babe09ccc9fc522e",
+  "status": "finished",
+  "step": {
+    "simulation_id": "efa6f5be62084322babe09ccc9fc522e",
+    "step_number": 1,
+    "metrics": {
+      "step_number": 1,
+      "total_vehicles": 3,
+      "avg_speed_kph": 27.0,
+      "density": 0.0008077544426494346,
+      "throughput_veh_per_min": 0.0,
+      "congestion_ratio": 0.0
+    },
+    "state": {},
+    "visualization": {}
+  }
+}
+```
+
+| Campo | Descripcion |
+| --- | --- |
+| `type` | Tipo de evento; en este caso `step` |
+| `simulation_id` | Simulacion que se esta reproduciendo |
+| `status` | Estado de la simulacion al momento de enviar el evento |
+| `step` | Datos completos del paso grabado; misma estructura que `GET /steps` |
+
+### Evento `status` (replay)
+
+Se envia una vez que todos los pasos han sido emitidos.
+
+```json
+{
+  "type": "status",
+  "simulation_id": "efa6f5be62084322babe09ccc9fc522e",
+  "status": "finished"
+}
+```
+
+| Campo | Descripcion |
+| --- | --- |
+| `type` | Tipo de evento; en este caso `status` |
+| `simulation_id` | Simulacion reproducida |
+| `status` | Estado final: `finished` o `cancelled` |
+
+Despues de enviar el evento `status` el servidor cierra la conexion normalmente.
