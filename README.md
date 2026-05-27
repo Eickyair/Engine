@@ -156,6 +156,8 @@ docker compose down -v
 
 ## Endpoints principales
 
+Documentacion detallada de cada endpoint en [src/traffic_engine/api/README.md](src/traffic_engine/api/README.md).
+
 - `GET /health`
 - `GET /api/response-models.json`
 - `GET /geographic-areas`
