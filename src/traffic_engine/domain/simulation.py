@@ -54,6 +54,7 @@ class NaSchSimulationModel:
         self._boundary_nodes: List[str] = []
         self._adjacency: Dict[str, List[EdgeId]] = {}
         self._traffic_lights_by_node: Dict[str, TrafficLight] = {}
+        self._blocked_lanes: Dict[EdgeId, List[int]] = {}
         self._step_number = 0
         self._next_vehicle_id = 1
         self._last_removed = 0
@@ -77,6 +78,7 @@ class NaSchSimulationModel:
         self._traffic_lights_by_node = {
             traffic_light.node_id: traffic_light for traffic_light in self._traffic_lights
         }
+        self._blocked_lanes = config.blocked_lanes or {}
         self._step_number = 0
         self._next_vehicle_id = 1
         self._last_removed = 0
@@ -92,11 +94,41 @@ class NaSchSimulationModel:
         self._random.shuffle(vehicle_ids)
         finished: List[int] = []
         speeds: List[int] = []
+        excluded_edges = self._fully_blocked_edges()
 
         for vehicle_id in vehicle_ids:
             vehicle = self._vehicles.get(vehicle_id)
             if vehicle is None:
                 continue
+
+            # Dynamic rerouting: if any remaining edge in the route is fully blocked, replan
+            remaining_route = vehicle.route[vehicle.edge_idx + 1:]
+            if any(edge_id in excluded_edges for edge_id in remaining_route):
+                self._replan_route(vehicle, excluded_edges)
+
+            current_edge = vehicle.current_edge
+            blocked_lanes_on_edge = self._blocked_lanes.get(current_edge, [])
+
+            # If vehicle is in a blocked lane, force a lane change
+            if vehicle.lane in blocked_lanes_on_edge:
+                available_lanes = len(self._edge_cells[current_edge])
+                found_lane = None
+                for lane_idx in range(available_lanes):
+                    if lane_idx not in blocked_lanes_on_edge:
+                        if self._edge_cells[current_edge][lane_idx][vehicle.cell_pos] == 0:
+                            found_lane = lane_idx
+                            break
+
+                if found_lane is not None:
+                    self._edge_cells[current_edge][vehicle.lane][vehicle.cell_pos] = 0
+                    vehicle.lane = found_lane
+                    self._edge_cells[current_edge][vehicle.lane][vehicle.cell_pos] = vehicle_id
+                else:
+                    # All lanes blocked or full: expel vehicle
+                    self._edge_cells[current_edge][vehicle.lane][vehicle.cell_pos] = 0
+                    finished.append(vehicle_id)
+                    continue
+
             vehicle.is_changing_lane = vehicle.lane_change_ticks_remaining > 0
             vehicle.lane_change_ticks_remaining = max(
                 0,
@@ -125,6 +157,19 @@ class NaSchSimulationModel:
 
             if new_velocity == 0:
                 vehicle.wait_ticks += 1
+                # If stuck at boundary because next edge is fully blocked, expel vehicle
+                if vehicle.next_edge is not None:
+                    next_edge = vehicle.next_edge
+                    next_blocked = self._blocked_lanes.get(next_edge, [])
+                    if next_edge in self._topology.edges:
+                        next_edge_data = self._topology.edges[next_edge]
+                        next_effective_lanes = max(1, next_edge_data.lanes, self._config.default_lanes)
+                        if all(i in next_blocked for i in range(next_effective_lanes)):
+                            edge_length = len(self._edge_cells[current_edge][vehicle.lane])
+                            if vehicle.cell_pos >= edge_length - 1:
+                                self._edge_cells[current_edge][vehicle.lane][vehicle.cell_pos] = 0
+                                finished.append(vehicle_id)
+                                continue
 
             if new_velocity > 0:
                 self._edge_cells[current_edge][vehicle.lane][vehicle.cell_pos] = 0
@@ -139,7 +184,23 @@ class NaSchSimulationModel:
                     vehicle.edge_idx += 1
                     current_edge = vehicle.current_edge
                     available_lanes = len(self._edge_cells[current_edge])
-                    vehicle.lane = min(vehicle.lane, available_lanes - 1)
+                    blocked_lanes_on_edge = self._blocked_lanes.get(current_edge, [])
+
+                    preferred_lane = min(vehicle.lane, available_lanes - 1)
+                    if preferred_lane not in blocked_lanes_on_edge:
+                        vehicle.lane = preferred_lane
+                    else:
+                        found_lane = None
+                        for lane_idx in range(available_lanes):
+                            if lane_idx not in blocked_lanes_on_edge:
+                                found_lane = lane_idx
+                                break
+                        if found_lane is not None:
+                            vehicle.lane = found_lane
+                        else:
+                            finished.append(vehicle_id)
+                            break
+
                     edge_length = len(self._edge_cells[current_edge][vehicle.lane])
                     target_position = overflow
                 else:
@@ -148,6 +209,8 @@ class NaSchSimulationModel:
                         vehicle.cell_pos = clamped
                         self._edge_cells[current_edge][vehicle.lane][clamped] = vehicle_id
                     else:
+                        # Target cell occupied: revert edge_idx
+                        vehicle.edge_idx -= 1
                         previous_edge = vehicle.current_edge
                         self._edge_cells[previous_edge][vehicle.lane][vehicle.cell_pos] = vehicle_id
                         new_velocity = 0
@@ -204,14 +267,35 @@ class NaSchSimulationModel:
             )
             self._edge_cells[start_edge][lane][start_pos] = vehicle_id
 
+    def _fully_blocked_edges(self) -> set:
+        result: set = set()
+        if not self._config or not self._topology:
+            return result
+        for edge_id, blocked_lanes_list in self._blocked_lanes.items():
+            if edge_id not in self._topology.edges:
+                continue
+            edge_data = self._topology.edges[edge_id]
+            effective_lanes = max(1, edge_data.lanes, self._config.default_lanes)
+            if all(lane_idx in blocked_lanes_list for lane_idx in range(effective_lanes)):
+                result.add(edge_id)
+        return result
+
     def _random_route(self) -> List[EdgeId] | None:
         if self._topology is None or not self._boundary_nodes:
             return None
+
+        excluded = self._fully_blocked_edges()
+
         if self._route_provider is not None:
             try:
-                return self._route_provider.choose_route(self._topology, self._random)
+                route = self._route_provider.choose_route(
+                    self._topology, self._random, excluded_edges=excluded
+                )
+                if route and not any(edge_id in excluded for edge_id in route):
+                    return route
             except Exception:
-                return None
+                pass
+
         if len(self._boundary_nodes) < 2:
             nodes = list(self._topology.nodes.keys())
         else:
@@ -219,15 +303,21 @@ class NaSchSimulationModel:
 
         for _ in range(20):
             origin, destination = self._random.sample(nodes, 2)
-            path = self._shortest_edge_path(origin, destination)
+            path = self._shortest_edge_path(origin, destination, excluded_edges=excluded)
             if len(path) >= 1:
                 return path
         return None
 
-    def _shortest_edge_path(self, origin: str, destination: str) -> List[EdgeId]:
+    def _shortest_edge_path(
+        self,
+        origin: str,
+        destination: str,
+        excluded_edges: set | None = None,
+    ) -> List[EdgeId]:
         if self._topology is None:
             return []
 
+        excluded = excluded_edges or set()
         distances: Dict[str, float] = {origin: 0.0}
         previous: Dict[str, EdgeId] = {}
         heap: List[tuple[float, str]] = [(0.0, origin)]
@@ -240,6 +330,8 @@ class NaSchSimulationModel:
                 continue
 
             for edge_id in self._adjacency.get(node_id, []):
+                if edge_id in excluded:
+                    continue
                 edge = self._topology.edges[edge_id]
                 next_node = edge_id[1]
                 candidate = distance + edge.travel_time_sec
@@ -261,6 +353,37 @@ class NaSchSimulationModel:
         route.reverse()
         return route
 
+    def _replan_route(self, vehicle: Vehicle, excluded: set) -> bool:
+        if self._topology is None:
+            return False
+        destination = vehicle.route[-1][1]
+        current_node = vehicle.current_edge[1]
+        if current_node == destination:
+            return False
+        new_path = self._shortest_edge_path(current_node, destination, excluded_edges=excluded)
+        if new_path:
+            vehicle.route = vehicle.route[:vehicle.edge_idx + 1] + new_path
+            return True
+        return False
+
+    def _effective_lane_on_next_edge(self, vehicle: Vehicle) -> int | None:
+        """Return the lane the vehicle will occupy on its next edge, respecting blocked lanes.
+
+        Returns None if all lanes on the next edge are blocked.
+        """
+        next_edge = vehicle.next_edge
+        if next_edge is None:
+            return None
+        available_lanes = len(self._edge_cells[next_edge])
+        blocked = self._blocked_lanes.get(next_edge, [])
+        preferred = min(vehicle.lane, available_lanes - 1)
+        if preferred not in blocked:
+            return preferred
+        for lane_idx in range(available_lanes):
+            if lane_idx not in blocked:
+                return lane_idx
+        return None
+
     def _gap_ahead(self, vehicle: Vehicle) -> int:
         current_cells = self._edge_cells[vehicle.current_edge][vehicle.lane]
         position = vehicle.cell_pos
@@ -273,7 +396,9 @@ class NaSchSimulationModel:
         if vehicle.next_edge is None:
             return gap_in_edge
 
-        next_lane = min(vehicle.lane, len(self._edge_cells[vehicle.next_edge]) - 1)
+        next_lane = self._effective_lane_on_next_edge(vehicle)
+        if next_lane is None:
+            return gap_in_edge
         next_cells = self._edge_cells[vehicle.next_edge][next_lane]
         for distance, value in enumerate(next_cells):
             if value != 0:
@@ -296,6 +421,9 @@ class NaSchSimulationModel:
             return vehicle.lane
         candidate = self._cellular_model.resolve_lane(vehicle, available_lanes, gap)
         if candidate == vehicle.lane or not 0 <= candidate < available_lanes:
+            return vehicle.lane
+        blocked_lanes = self._blocked_lanes.get(vehicle.current_edge, [])
+        if candidate in blocked_lanes:
             return vehicle.lane
         current_edge = vehicle.current_edge
         lane_cells = self._edge_cells[current_edge][candidate]
@@ -331,9 +459,10 @@ class NaSchSimulationModel:
     def _first_free_spawn_cell(self, edge_id: EdgeId) -> tuple[int | None, int]:
         edge_lanes = self._edge_cells[edge_id]
         entry_window = min(3, max((len(cells) for cells in edge_lanes), default=0))
+        blocked_lanes = self._blocked_lanes.get(edge_id, [])
         for index in range(entry_window):
             for lane, cells in enumerate(edge_lanes):
-                if index < len(cells) and cells[index] == 0:
+                if lane not in blocked_lanes and index < len(cells) and cells[index] == 0:
                     return lane, index
         return None, 0
 

@@ -76,6 +76,7 @@ class SimulationModelBuilder:
             traffic_light_green_steps=self._config.traffic_light_green_steps,
             traffic_light_red_steps=self._config.traffic_light_red_steps,
             enable_lane_changes=self._config.enable_lane_changes,
+            blocked_lanes=self._config.blocked_lanes,
         )
         return SimulationModelDefinition(
             config=config,

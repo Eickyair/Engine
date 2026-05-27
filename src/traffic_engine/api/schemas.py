@@ -80,6 +80,7 @@ class CreateSimulationRequest(BaseModel):
     traffic_light_green_steps: int = Field(default=10, ge=1)
     traffic_light_red_steps: int = Field(default=10, ge=0)
     enable_lane_changes: bool = False
+    blocked_lanes: dict[str, list[int]] = Field(default_factory=dict)
 
 
 class SimulationRecordResponse(BaseModel):

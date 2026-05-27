@@ -14,7 +14,12 @@ class TrafficLightProvider(Protocol):
 
 
 class RouteProvider(Protocol):
-    def choose_route(self, topology: TopologyData, random: Random) -> list[EdgeId]:
+    def choose_route(
+        self,
+        topology: TopologyData,
+        random: Random,
+        excluded_edges: set[EdgeId] | None = None,
+    ) -> list[EdgeId]:
         ...
 
 
