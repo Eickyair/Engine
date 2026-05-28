@@ -38,6 +38,46 @@ INDEX_HTML = r"""<!doctype html>
       --danger-bg: #fee4e2;
       --ok: #067647;
       --shadow: 0 12px 32px rgba(16, 24, 40, 0.08);
+      --label: #344054;
+      --surface: #fbfcfe;
+      --input-bg: #ffffff;
+      --input-border: #c7d0dd;
+      --topbar-bg: rgba(255, 255, 255, 0.9);
+      --toolbar-bg: rgba(255, 255, 255, 0.92);
+      --map-bg: #ffffff;
+      --secondary-btn: #eef2f6;
+      --secondary-btn-text: #263241;
+      --map-btn-bg: #ffffff;
+      --map-btn-text: #1c2430;
+      --legend-text: #475467;
+      --metric-strong: #101828;
+    }
+
+    [data-theme="dark"] {
+      --bg: #0d1117;
+      --panel: #161b22;
+      --line: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --primary: #388bfd;
+      --primary-dark: #58a6ff;
+      --danger: #ff7b72;
+      --danger-bg: #3d1219;
+      --ok: #3fb950;
+      --shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+      --label: #c9d1d9;
+      --surface: #1c2128;
+      --input-bg: #1c2128;
+      --input-border: #30363d;
+      --topbar-bg: rgba(22, 27, 34, 0.9);
+      --toolbar-bg: rgba(22, 27, 34, 0.92);
+      --map-bg: #1c2128;
+      --secondary-btn: #21262d;
+      --secondary-btn-text: #c9d1d9;
+      --map-btn-bg: #1c2128;
+      --map-btn-text: #e6edf3;
+      --legend-text: #8b949e;
+      --metric-strong: #e6edf3;
     }
 
     * { box-sizing: border-box; }
@@ -75,7 +115,7 @@ INDEX_HTML = r"""<!doctype html>
       justify-content: space-between;
       gap: 16px;
       padding: 14px 18px;
-      background: rgba(255, 255, 255, 0.9);
+      background: var(--topbar-bg);
       border-bottom: 1px solid var(--line);
     }
 
@@ -98,15 +138,15 @@ INDEX_HTML = r"""<!doctype html>
       margin: 12px 0 6px;
       font-size: 13px;
       font-weight: 650;
-      color: #344054;
+      color: var(--label);
     }
 
     select, input {
       width: 100%;
       min-height: 38px;
-      border: 1px solid #c7d0dd;
+      border: 1px solid var(--input-border);
       border-radius: 6px;
-      background: #fff;
+      background: var(--input-bg);
       color: var(--text);
       padding: 8px 10px;
       font: inherit;
@@ -134,7 +174,7 @@ INDEX_HTML = r"""<!doctype html>
 
     .primary { background: var(--primary); color: #fff; }
     .primary:hover:not(:disabled) { background: var(--primary-dark); }
-    .secondary { background: #eef2f6; color: #263241; }
+    .secondary { background: var(--secondary-btn); color: var(--secondary-btn-text); }
     .danger { background: var(--danger-bg); color: var(--danger); }
 
     .actions {
@@ -170,7 +210,7 @@ INDEX_HTML = r"""<!doctype html>
       grid-template-columns: repeat(6, minmax(110px, 1fr));
       gap: 10px;
       padding: 12px 18px;
-      background: #fff;
+      background: var(--panel);
       border-bottom: 1px solid var(--line);
     }
 
@@ -178,7 +218,7 @@ INDEX_HTML = r"""<!doctype html>
       border: 1px solid var(--line);
       border-radius: 8px;
       padding: 10px 12px;
-      background: #fbfcfe;
+      background: var(--surface);
     }
 
     .stat span {
@@ -213,19 +253,19 @@ INDEX_HTML = r"""<!doctype html>
       padding: 12px 14px;
       border: 1px solid var(--line);
       border-radius: 10px;
-      background: #fbfcfe;
+      background: var(--surface);
       color: var(--muted);
       font-size: 13px;
     }
 
     .metric-banner strong {
-      color: #101828;
+      color: var(--metric-strong);
       font-size: 13px;
     }
 
     .metric-units {
       font-size: 12px;
-      color: #667085;
+      color: var(--muted);
     }
 
     .legend {
@@ -233,7 +273,7 @@ INDEX_HTML = r"""<!doctype html>
       flex-wrap: wrap;
       gap: 10px 16px;
       font-size: 12px;
-      color: #475467;
+      color: var(--legend-text);
     }
 
     .legend-item {
@@ -253,7 +293,7 @@ INDEX_HTML = r"""<!doctype html>
       display: flex;
       gap: 8px;
       flex-wrap: wrap;
-      background: rgba(255, 255, 255, 0.92);
+      background: var(--toolbar-bg);
       border: 1px solid var(--line);
       border-radius: 10px;
       padding: 8px 10px;
@@ -262,8 +302,8 @@ INDEX_HTML = r"""<!doctype html>
 
     .map-btn {
       border: 1px solid var(--line);
-      background: #ffffff;
-      color: #1c2430;
+      background: var(--map-btn-bg);
+      color: var(--map-btn-text);
       border-radius: 999px;
       padding: 6px 12px;
       font-size: 12px;
@@ -281,7 +321,7 @@ INDEX_HTML = r"""<!doctype html>
       width: 100%;
       height: calc(100vh - 122px);
       min-height: 420px;
-      background: #ffffff;
+      background: var(--map-bg);
       border: 1px solid var(--line);
       border-radius: 8px;
       box-shadow: var(--shadow);
@@ -292,7 +332,7 @@ INDEX_HTML = r"""<!doctype html>
       width: 100%;
       height: 48vh;
       min-height: 360px;
-      background: #ffffff;
+      background: var(--map-bg);
       border: 1px solid var(--line);
       border-radius: 8px;
       box-shadow: var(--shadow);
@@ -377,7 +417,7 @@ INDEX_HTML = r"""<!doctype html>
       padding: 9px 10px;
       border: 1px solid var(--line);
       border-radius: 6px;
-      background: #fbfcfe;
+      background: var(--surface);
     }
 
     .check-row {
@@ -385,7 +425,7 @@ INDEX_HTML = r"""<!doctype html>
       align-items: center;
       gap: 10px;
       margin-top: 12px;
-      color: #344054;
+      color: var(--label);
       font-size: 13px;
       font-weight: 650;
     }
@@ -401,7 +441,7 @@ INDEX_HTML = r"""<!doctype html>
       padding: 10px;
       border: 1px solid var(--line);
       border-radius: 6px;
-      background: #fbfcfe;
+      background: var(--surface);
       color: var(--muted);
       font-size: 13px;
       line-height: 1.4;
@@ -498,6 +538,7 @@ INDEX_HTML = r"""<!doctype html>
       <div class="topbar">
         <div class="status"><span id="statusDot" class="dot"></span><span id="statusText">Listo</span></div>
         <div id="simulationLabel" class="status">Sin simulacion activa</div>
+        <button id="themeToggle" class="map-btn" type="button">Modo oscuro</button>
       </div>
       <section class="stats">
         <div class="stat"><span>Step</span><strong id="stepStat">0</strong></div>
@@ -534,6 +575,17 @@ INDEX_HTML = r"""<!doctype html>
   <script>
     const $ = (id) => document.getElementById(id);
 
+    const TILE_LAYERS = {
+      light: {
+        url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        attribution: "&copy; OpenStreetMap contributors",
+      },
+      dark: {
+        url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+        attribution: "&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors &copy; <a href='https://carto.com/attributions'>CARTO</a>",
+      },
+    };
+
     let config = null;
     let areas = [];
     let topology = null;
@@ -546,6 +598,8 @@ INDEX_HTML = r"""<!doctype html>
     let activeModelConfig = null;
     let map = null;
     let metricMap = null;
+    let tileLayer = null;
+    let metricTileLayer = null;
     let edgeLayer = null;
     let vehicleLayer = null;
     let trafficLightLayer = null;
@@ -619,6 +673,40 @@ INDEX_HTML = r"""<!doctype html>
       },
     };
 
+    function initTheme() {
+      const saved = localStorage.getItem("ui-theme") || "light";
+      document.documentElement.dataset.theme = saved;
+      $("themeToggle").textContent = saved === "dark" ? "Modo claro" : "Modo oscuro";
+    }
+
+    function makeTileLayer() {
+      const theme = document.documentElement.dataset.theme || "light";
+      const cfg = TILE_LAYERS[theme] || TILE_LAYERS.light;
+      return L.tileLayer(cfg.url, { maxZoom: 20, attribution: cfg.attribution });
+    }
+
+    function updateMapTiles() {
+      if (map) {
+        if (tileLayer) map.removeLayer(tileLayer);
+        tileLayer = makeTileLayer().addTo(map);
+        tileLayer.bringToBack();
+      }
+      if (metricMap) {
+        if (metricTileLayer) metricMap.removeLayer(metricTileLayer);
+        metricTileLayer = makeTileLayer().addTo(metricMap);
+        metricTileLayer.bringToBack();
+      }
+    }
+
+    function toggleTheme() {
+      const current = document.documentElement.dataset.theme || "light";
+      const next = current === "dark" ? "light" : "dark";
+      document.documentElement.dataset.theme = next;
+      localStorage.setItem("ui-theme", next);
+      $("themeToggle").textContent = next === "dark" ? "Modo claro" : "Modo oscuro";
+      updateMapTiles();
+    }
+
     function setStatus(text, mode = "") {
       $("statusText").textContent = text;
       $("statusDot").className = `dot ${mode}`.trim();
@@ -688,10 +776,7 @@ INDEX_HTML = r"""<!doctype html>
         zoomControl: true,
         attributionControl: true,
       });
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 20,
-        attribution: "&copy; OpenStreetMap contributors",
-      }).addTo(map);
+      tileLayer = makeTileLayer().addTo(map);
       map.createPane("roadsPane");
       map.createPane("vehiclesPane");
       map.createPane("trafficLightsPane");
@@ -711,10 +796,7 @@ INDEX_HTML = r"""<!doctype html>
         zoomControl: true,
         attributionControl: true,
       });
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 20,
-        attribution: "&copy; OpenStreetMap contributors",
-      }).addTo(metricMap);
+      metricTileLayer = makeTileLayer().addTo(metricMap);
       metricMap.createPane("metricPane");
       metricMap.getPane("metricPane").style.zIndex = 510;
       heatDensityLayer = L.heatLayer([], { radius: 18, blur: 14, maxZoom: 16, pane: "metricPane" });
@@ -1189,6 +1271,7 @@ INDEX_HTML = r"""<!doctype html>
     }
 
     function bindControls() {
+      $("themeToggle").addEventListener("click", toggleTheme);
       $("reloadBtn").addEventListener("click", () => loadAreas().catch((error) => setStatus(error.message, "error")));
       $("areaSelect").addEventListener("change", (event) => loadTopology(event.target.value).catch((error) => setStatus(error.message, "error")));
       $("startBtn").addEventListener("click", startSimulation);
@@ -1214,6 +1297,7 @@ INDEX_HTML = r"""<!doctype html>
 
     async function boot() {
       bindControls();
+      initTheme();
       if (!window.L) {
         setStatus("Leaflet no pudo cargarse", "error");
         return;
