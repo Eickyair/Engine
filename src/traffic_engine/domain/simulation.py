@@ -90,21 +90,45 @@ class NaSchSimulationModel:
         finished: List[int] = []
         speeds: List[int] = []
 
+        # --- NUEVA LÓGICA 1: CAUSAR EL CHOQUE ALEATORIO ---
+        if self._config.crash_prob > 0.0 and self._random.random() < self._config.crash_prob:
+            # Buscamos vehículos activos que no estén chocados ya
+            active_candidates = [
+                vid for vid in vehicle_ids 
+                if not self._vehicles[vid].is_crashed and self._vehicles[vid].velocity > 0
+            ]
+            if active_candidates:
+                crashed_vid = self._random.choice(active_candidates)
+                self._vehicles[crashed_vid].is_crashed = True
+                self._vehicles[crashed_vid].velocity = 0
+        # --------------------------------------------------
+
         for vehicle_id in vehicle_ids:
             vehicle = self._vehicles.get(vehicle_id)
             if vehicle is None:
                 continue
+
+            current_edge = vehicle.current_edge
+
+            # --- NUEVA LÓGICA 2: VEHÍCULO CHOCADO SE QUEDA INMÓVIL COMO OBSTÁCULO ---
+            if vehicle.is_crashed:
+                self._edge_cells[current_edge][vehicle.lane][vehicle.cell_pos] = vehicle_id
+                vehicle.wait_ticks += 1
+                speeds.append(0)
+                continue
+            # ------------------------------------------------------------------------
+
             vehicle.is_changing_lane = vehicle.lane_change_ticks_remaining > 0
             vehicle.lane_change_ticks_remaining = max(
                 0,
                 vehicle.lane_change_ticks_remaining - 1,
             )
 
-            current_edge = vehicle.current_edge
             edge_data = self._topology.edges[current_edge]
             gap = self._gap_ahead(vehicle)
             available_lanes = len(self._edge_cells[current_edge])
             target_lane = self._resolve_lane(vehicle, available_lanes, gap)
+            
             if target_lane != vehicle.lane:
                 self._edge_cells[current_edge][vehicle.lane][vehicle.cell_pos] = 0
                 vehicle.lane = target_lane
@@ -390,6 +414,7 @@ class NaSchSimulationModel:
             cell_position=vehicle.cell_pos,
             direction=(vehicle.current_edge[0], vehicle.current_edge[1]),
             is_changing_lane=vehicle.is_changing_lane,
+            is_crashed=vehicle.is_crashed,
         )
 
     def _build_cell_snapshots(self) -> List[CellSnapshot]:
