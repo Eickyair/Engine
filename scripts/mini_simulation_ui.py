@@ -689,13 +689,12 @@ INDEX_HTML = r"""<!doctype html>
       if (map) {
         if (tileLayer) map.removeLayer(tileLayer);
         tileLayer = makeTileLayer().addTo(map);
-        tileLayer.bringToBack();
       }
       if (metricMap) {
         if (metricTileLayer) metricMap.removeLayer(metricTileLayer);
         metricTileLayer = makeTileLayer().addTo(metricMap);
-        metricTileLayer.bringToBack();
       }
+      renderTopology();
     }
 
     function toggleTheme() {
@@ -904,7 +903,10 @@ INDEX_HTML = r"""<!doctype html>
         if (!edge.geometry_points || edge.geometry_points.length < 2) continue;
         const lanes = edge.lanes || 1;
         const points = edge.geometry_points.map(toLatLng);
-        const color = edge.allows_lane_change ? "#475467" : "#98a2b3";
+        const dark = document.documentElement.dataset.theme === "dark";
+        const color = dark
+          ? (edge.allows_lane_change ? "#94a3b8" : "#64748b")
+          : (edge.allows_lane_change ? "#475467" : "#98a2b3");
         L.polyline(points, {
           pane: "roadsPane",
           color,
