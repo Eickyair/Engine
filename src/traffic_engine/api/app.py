@@ -132,6 +132,7 @@ def create_app() -> FastAPI:
                 traffic_light_green_steps=request.traffic_light_green_steps,
                 traffic_light_red_steps=request.traffic_light_red_steps,
                 enable_lane_changes=request.enable_lane_changes,
+                crash_prob=request.crash_prob,
             )
         except GeographicAreaNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc

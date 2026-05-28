@@ -54,6 +54,7 @@ class CreateSimulationUseCase:
         traffic_light_green_steps: int = 10,
         traffic_light_red_steps: int = 10,
         enable_lane_changes: bool = False,
+        crash_prob: float = 0.0,
     ) -> SimulationRecord:
         area = self.area_repository.get(area_id)
         if area is None:
@@ -83,6 +84,7 @@ class CreateSimulationUseCase:
                 traffic_light_green_steps=max(1, traffic_light_green_steps),
                 traffic_light_red_steps=max(0, traffic_light_red_steps),
                 enable_lane_changes=enable_lane_changes,
+                crash_prob=crash_prob,
             ),
         )
         stored = self.simulation_repository.create(record)

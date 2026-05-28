@@ -257,6 +257,7 @@ class SimulationConfig:
     traffic_light_green_steps: int = 10
     traffic_light_red_steps: int = 10
     enable_lane_changes: bool = False
+    crash_prob: float = 0.0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -273,6 +274,7 @@ class SimulationConfig:
             "traffic_light_green_steps": self.traffic_light_green_steps,
             "traffic_light_red_steps": self.traffic_light_red_steps,
             "enable_lane_changes": self.enable_lane_changes,
+            "crash_prob": self.crash_prob,
         }
 
     @classmethod
@@ -293,6 +295,7 @@ class SimulationConfig:
             traffic_light_green_steps=max(1, int(payload.get("traffic_light_green_steps", 10))),
             traffic_light_red_steps=max(0, int(payload.get("traffic_light_red_steps", 10))),
             enable_lane_changes=bool(payload.get("enable_lane_changes", False)),
+            crash_prob=float(payload.get("crash_prob", 0.0)),
         )
 
 
