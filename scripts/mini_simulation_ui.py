@@ -276,6 +276,18 @@ INDEX_HTML = r"""<!doctype html>
       box-shadow: 0 0 0 3px rgba(247, 144, 9, 0.32), 0 2px 10px rgba(28, 36, 48, 0.3);
     }
 
+    .vehicle-icon.crashed {
+      border-color: #d92d20;
+      background: #d92d20 !important;
+      box-shadow: 0 0 0 4px rgba(217, 45, 32, 0.4);
+      animation: pulse-crash 1.5s infinite;
+    }
+    @keyframes pulse-crash {
+      0% { opacity: 1; }
+      50% { opacity: 0.6; }
+      100% { opacity: 1; }
+    }
+
     .hint {
       color: var(--muted);
       font-size: 13px;
@@ -397,6 +409,8 @@ INDEX_HTML = r"""<!doctype html>
       <input id="spawnRate" type="range" min="0" max="1" step="0.01" value="0.2" />
       <label for="noiseProb">Ruido <span id="noiseValue">0.30</span></label>
       <input id="noiseProb" type="range" min="0" max="1" step="0.01" value="0.3" />
+      <label for="crashProb">Prob. Choque <span id="crashValue">0.000</span></label>
+      <input id="crashProb" type="range" min="0" max="0.1" step="0.001" value="0.000" />
       <label for="seed">Seed</label>
       <input id="seed" type="number" value="42" />
 
@@ -593,8 +607,14 @@ INDEX_HTML = r"""<!doctype html>
 
     function vehicleIcon(vehicle, changingLane, stopped) {
       const classes = ["vehicle-icon"];
-      if (changingLane) classes.push("changing-lane");
-      if (stopped) classes.push("stopped");
+      
+      if (vehicle.is_crashed) {
+        classes.push("crashed");
+      } else {
+        if (changingLane) classes.push("changing-lane");
+        if (stopped) classes.push("stopped");
+      }
+
       return L.divIcon({
         className: "vehicle-div-icon",
         html: `<div class="${classes.join(" ")}" style="--vehicle-color: ${vehicleColor(vehicle)}"></div>`,
@@ -790,6 +810,7 @@ INDEX_HTML = r"""<!doctype html>
         max_steps: numberValue("maxSteps"),
         spawn_rate: numberValue("spawnRate"),
         noise_prob: numberValue("noiseProb"),
+        crash_prob: numberValue("crashProb"),
         seed: numberValue("seed"),
         tick_interval_ms: numberValue("tickInterval"),
         ...modelConfigFromControls(),
@@ -828,6 +849,7 @@ INDEX_HTML = r"""<!doctype html>
       $("cancelBtn").addEventListener("click", cancelSimulation);
       $("spawnRate").addEventListener("input", () => $("spawnValue").textContent = Number($("spawnRate").value).toFixed(2));
       $("noiseProb").addEventListener("input", () => $("noiseValue").textContent = Number($("noiseProb").value).toFixed(2));
+      $("crashProb").addEventListener("input", () => $("crashValue").textContent = Number($("crashProb").value).toFixed(3));
       ["executionMode", "defaultLanes", "trafficLightGreen", "trafficLightRed", "trafficLightPercentage", "enableLaneChanges"].forEach((id) => {
         $(id).addEventListener("input", updateModelPreview);
         $(id).addEventListener("change", updateModelPreview);
