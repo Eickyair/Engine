@@ -695,6 +695,7 @@ INDEX_HTML = r"""<!doctype html>
         metricTileLayer = makeTileLayer().addTo(metricMap);
       }
       renderTopology();
+      renderMetricOverlays();
     }
 
     function toggleTheme() {
