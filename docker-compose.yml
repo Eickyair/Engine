@@ -1,5 +1,7 @@
 services:
   api:
+    mem_limit: 256m
+    memswap_limit: 256m
     build:
       context: .
       dockerfile: Dockerfile
@@ -19,10 +21,13 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    
 
   mongodb:
     image: mongo:7.0.17
     container_name: ${COMPOSE_PROJECT_NAME}_mongo
+    mem_limit: 512m        # máximo 512 MB de RAM para este contenedor
+    memswap_limit: 512m    # deshabilita el uso de swap
     command:
       - mongod
       - --auth
@@ -60,6 +65,7 @@ services:
     volumes:
       - mongo_data:/data/db
       - ./docker/mongo/init:/docker-entrypoint-initdb.d:ro
+    
 
 volumes:
   mongo_data:
