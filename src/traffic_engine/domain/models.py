@@ -258,6 +258,7 @@ class SimulationConfig:
     traffic_light_red_steps: int = 10
     enable_lane_changes: bool = False
     blocked_lanes: Dict[EdgeId, List[int]] = field(default_factory=dict)
+    crash_prob: float = 0.0
 
     def to_dict(self) -> Dict[str, Any]:
         blocked_lanes_serialized = {
@@ -278,6 +279,7 @@ class SimulationConfig:
             "traffic_light_red_steps": self.traffic_light_red_steps,
             "enable_lane_changes": self.enable_lane_changes,
             "blocked_lanes": blocked_lanes_serialized,
+            "crash_prob": self.crash_prob,
         }
 
     @classmethod
@@ -320,6 +322,7 @@ class SimulationConfig:
             traffic_light_red_steps=max(0, int(payload.get("traffic_light_red_steps", 10))),
             enable_lane_changes=bool(payload.get("enable_lane_changes", False)),
             blocked_lanes=blocked_lanes_parsed,
+            crash_prob=float(payload.get("crash_prob", 0.0)),
         )
 
 
@@ -335,6 +338,7 @@ class Vehicle:
     wait_ticks: int = 0
     is_changing_lane: bool = False
     lane_change_ticks_remaining: int = 0
+    is_crashed: bool = False
 
     @property
     def current_edge(self) -> EdgeId:
@@ -361,6 +365,7 @@ class VehicleSnapshot:
     cell_position: int = 0
     direction: Tuple[NodeId, NodeId] | None = None
     is_changing_lane: bool = False
+    is_crashed: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -375,6 +380,7 @@ class VehicleSnapshot:
             "cell_position": self.cell_position,
             "direction": list(self.direction or (self.edge[0], self.edge[1])),
             "is_changing_lane": self.is_changing_lane,
+            "is_crashed": self.is_crashed,
         }
 
     @classmethod
@@ -394,6 +400,7 @@ class VehicleSnapshot:
                 str(payload.get("direction", payload["edge"])[1]),
             ),
             is_changing_lane=bool(payload.get("is_changing_lane", False)),
+            is_crashed=bool(payload.get("is_crashed", False)),
         )
 
 

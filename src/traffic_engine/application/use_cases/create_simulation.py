@@ -63,6 +63,7 @@ class CreateSimulationUseCase:
         traffic_light_red_steps: int = 10,
         enable_lane_changes: bool = False,
         blocked_lanes: Dict[str, List[int]] | None = None,
+        crash_prob: float = 0.0,
     ) -> SimulationRecord:
         area = self.area_repository.get(area_id)
         if area is None:
@@ -138,6 +139,7 @@ class CreateSimulationUseCase:
                 traffic_light_red_steps=max(0, traffic_light_red_steps),
                 enable_lane_changes=enable_lane_changes,
                 blocked_lanes=parsed_blocked_lanes,
+                crash_prob=crash_prob,
             ),
         )
         if self.runtime.active_count >= MAX_CONCURRENT_SIMULATIONS:

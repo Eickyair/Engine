@@ -81,6 +81,7 @@ class CreateSimulationRequest(BaseModel):
     traffic_light_red_steps: int = Field(default=10, ge=0)
     enable_lane_changes: bool = False
     blocked_lanes: dict[str, list[int]] = Field(default_factory=dict)
+    crash_prob: float = Field(default=0.0, ge=0.0, le=1.0)
 
 
 class SimulationRecordResponse(BaseModel):
