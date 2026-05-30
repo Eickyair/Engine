@@ -264,6 +264,7 @@ def create_app() -> FastAPI:
     @app.post(
         "/simulations",
         response_model=SimulationRecordResponse,
+        response_model_exclude_none=True,
         status_code=status.HTTP_201_CREATED,
     )
     async def create_simulation(
@@ -296,7 +297,11 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=429, detail=str(exc)) from exc
         return _record_response(record)
 
-    @app.get("/simulations/{simulation_id}", response_model=SimulationRecordResponse)
+    @app.get(
+        "/simulations/{simulation_id}",
+        response_model=SimulationRecordResponse,
+        response_model_exclude_none=True,
+    )
     async def get_simulation(
         simulation_id: str,
         container: Container = Depends(get_container),
@@ -323,9 +328,10 @@ def create_app() -> FastAPI:
         return CancelSimulationResponse(simulation_id=simulation_id, requested=True)
 
     @app.get(
-    "/simulations/{simulation_id}/steps",
-    response_model=list[SimulationStepResponse],
-)
+        "/simulations/{simulation_id}/steps",
+        response_model=list[SimulationStepResponse],
+        response_model_exclude_none=True,
+    )
     async def list_simulation_steps(
         simulation_id: str,
         include_running: bool = False,
