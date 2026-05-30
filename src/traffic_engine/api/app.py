@@ -323,12 +323,14 @@ def create_app() -> FastAPI:
         return CancelSimulationResponse(simulation_id=simulation_id, requested=True)
 
     @app.get(
-        "/simulations/{simulation_id}/steps",
-        response_model=list[SimulationStepResponse],
-    )
+    "/simulations/{simulation_id}/steps",
+    response_model=list[SimulationStepResponse],
+)
     async def list_simulation_steps(
         simulation_id: str,
         include_running: bool = False,
+        limit: int = 50,
+        offset: int = 0,
         container: Container = Depends(get_container),
     ) -> list[SimulationStepResponse]:
         try:
@@ -340,6 +342,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except SimulationNotReadyError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        paginated_steps = steps[offset : offset + limit]
         return [
             SimulationStepResponse(
                 simulation_id=step.simulation_id,
@@ -349,7 +352,7 @@ def create_app() -> FastAPI:
                 state=step.state.to_dict(),
                 recorded_at=step.recorded_at,
             )
-            for step in steps
+            for step in paginated_steps
         ]
 
     @app.websocket("/simulations/{simulation_id}/replay")
