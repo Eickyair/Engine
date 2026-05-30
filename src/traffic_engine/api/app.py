@@ -7,6 +7,9 @@ from typing import Any
 from fastapi.encoders import jsonable_encoder
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
 
+# Agrega este import al inicio del archivo junto a los demás imports
+from starlette.middleware.gzip import GZipMiddleware
+
 from ..domain.exceptions import (
     GeographicAreaNotFoundError,
     SimulationCancellationError,
@@ -206,6 +209,8 @@ def _public_schema(schema: Any, schemas: dict[str, Any], seen: set[str] | None =
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Traffic Engine API", version="0.1.0")
+
+    app.add_middleware(GZipMiddleware, minimum_size=500)
 
     @app.on_event("shutdown")
     async def _shutdown() -> None:
