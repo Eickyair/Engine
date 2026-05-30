@@ -5,7 +5,14 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi.encoders import jsonable_encoder
-from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
+from fastapi import Depends, FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect, status
+
+import time
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+
+# Agrega este import al inicio del archivo junto a los demás imports
+from starlette.middleware.gzip import GZipMiddleware
 
 from ..domain.exceptions import (
     GeographicAreaNotFoundError,
@@ -207,6 +214,18 @@ def _public_schema(schema: Any, schemas: dict[str, Any], seen: set[str] | None =
 def create_app() -> FastAPI:
     app = FastAPI(title="Traffic Engine API", version="0.1.0")
 
+    app.add_middleware(GZipMiddleware, minimum_size=500)
+
+    class ProcessTimeMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: StarletteRequest, call_next):
+            start = time.perf_counter()
+            response = await call_next(request)
+            elapsed = time.perf_counter() - start
+            response.headers["X-Process-Time"] = f"{elapsed:.4f}s"
+            return response
+
+    app.add_middleware(ProcessTimeMiddleware)
+
     @app.on_event("shutdown")
     async def _shutdown() -> None:
         container = get_container()
@@ -223,8 +242,10 @@ def create_app() -> FastAPI:
 
     @app.get("/geographic-areas", response_model=list[GeographicAreaSummaryResponse])
     async def list_geographic_areas(
+        response: Response,
         container: Container = Depends(get_container),
     ) -> list[GeographicAreaSummaryResponse]:
+        response.headers["Cache-Control"] = "public, max-age=60"
         areas = container.list_geographic_areas.execute()
         return [
             GeographicAreaSummaryResponse(
@@ -244,8 +265,10 @@ def create_app() -> FastAPI:
     )
     async def get_geographic_area_topology(
         area_id: str,
+        response: Response,
         container: Container = Depends(get_container),
     ) -> GeographicAreaTopologyResponse:
+        response.headers["Cache-Control"] = "public, max-age=300"
         try:
             area = container.get_geographic_area.execute(area_id)
         except GeographicAreaNotFoundError as exc:
@@ -255,6 +278,7 @@ def create_app() -> FastAPI:
     @app.post(
         "/simulations",
         response_model=SimulationRecordResponse,
+        response_model_exclude_none=True,
         status_code=status.HTTP_201_CREATED,
     )
     async def create_simulation(
@@ -288,7 +312,11 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=429, detail=str(exc)) from exc
         return _record_response(record)
 
-    @app.get("/simulations/{simulation_id}", response_model=SimulationRecordResponse)
+    @app.get(
+        "/simulations/{simulation_id}",
+        response_model=SimulationRecordResponse,
+        response_model_exclude_none=True,
+    )
     async def get_simulation(
         simulation_id: str,
         container: Container = Depends(get_container),
@@ -317,16 +345,21 @@ def create_app() -> FastAPI:
     @app.get(
         "/simulations/{simulation_id}/steps",
         response_model=list[SimulationStepResponse],
+        response_model_exclude_none=True,
     )
     async def list_simulation_steps(
         simulation_id: str,
         include_running: bool = False,
+        limit: int = 50,
+        offset: int = 0,
         container: Container = Depends(get_container),
     ) -> list[SimulationStepResponse]:
         try:
             steps = container.list_simulation_steps.execute(
                 simulation_id,
                 allow_running=include_running,
+                limit=limit,
+                offset=offset,
             )
         except SimulationNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
