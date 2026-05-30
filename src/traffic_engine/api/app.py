@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi.encoders import jsonable_encoder
-from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
+from fastapi import Depends, FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect, status
 
 # Agrega este import al inicio del archivo junto a los demás imports
 from starlette.middleware.gzip import GZipMiddleware
@@ -228,8 +228,10 @@ def create_app() -> FastAPI:
 
     @app.get("/geographic-areas", response_model=list[GeographicAreaSummaryResponse])
     async def list_geographic_areas(
+        response: Response,
         container: Container = Depends(get_container),
     ) -> list[GeographicAreaSummaryResponse]:
+        response.headers["Cache-Control"] = "public, max-age=60"
         areas = container.list_geographic_areas.execute()
         return [
             GeographicAreaSummaryResponse(
@@ -249,8 +251,10 @@ def create_app() -> FastAPI:
     )
     async def get_geographic_area_topology(
         area_id: str,
+        response: Response,
         container: Container = Depends(get_container),
     ) -> GeographicAreaTopologyResponse:
+        response.headers["Cache-Control"] = "public, max-age=300"
         try:
             area = container.get_geographic_area.execute(area_id)
         except GeographicAreaNotFoundError as exc:
