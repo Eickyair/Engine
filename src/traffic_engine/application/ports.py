@@ -40,7 +40,12 @@ class SimulationRepository(Protocol):
     def append_step(self, step: SimulationStep) -> SimulationStep:
         ...
 
-    def list_steps(self, simulation_id: str) -> list[SimulationStep]:
+    def list_steps(
+        self,
+        simulation_id: str,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[SimulationStep]:
         ...
 
 
