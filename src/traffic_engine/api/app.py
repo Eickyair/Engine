@@ -7,6 +7,10 @@ from typing import Any
 from fastapi.encoders import jsonable_encoder
 from fastapi import Depends, FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect, status
 
+import time
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+
 # Agrega este import al inicio del archivo junto a los demás imports
 from starlette.middleware.gzip import GZipMiddleware
 
@@ -212,6 +216,16 @@ def create_app() -> FastAPI:
 
     app.add_middleware(GZipMiddleware, minimum_size=500)
 
+    class ProcessTimeMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: StarletteRequest, call_next):
+            start = time.perf_counter()
+            response = await call_next(request)
+            elapsed = time.perf_counter() - start
+            response.headers["X-Process-Time"] = f"{elapsed:.4f}s"
+            return response
+
+    app.add_middleware(ProcessTimeMiddleware)
+
     @app.on_event("shutdown")
     async def _shutdown() -> None:
         container = get_container()
@@ -343,12 +357,13 @@ def create_app() -> FastAPI:
             steps = container.list_simulation_steps.execute(
                 simulation_id,
                 allow_running=include_running,
+                limit=limit,
+                offset=offset,
             )
         except SimulationNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except SimulationNotReadyError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
-        paginated_steps = steps[offset : offset + limit]
         return [
             SimulationStepResponse(
                 simulation_id=step.simulation_id,
@@ -358,7 +373,7 @@ def create_app() -> FastAPI:
                 state=step.state.to_dict(),
                 recorded_at=step.recorded_at,
             )
-            for step in paginated_steps
+            for step in steps
         ]
 
     @app.websocket("/simulations/{simulation_id}/replay")

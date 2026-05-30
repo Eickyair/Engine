@@ -74,7 +74,13 @@ class FakeGetSimulationUseCase:
 
 
 class FakeListSimulationStepsUseCase:
-    def execute(self, simulation_id: str, allow_running: bool = False):
+    def execute(
+        self,
+        simulation_id: str,
+        allow_running: bool = False,
+        limit: int = 50,       # agregar
+        offset: int = 0,       # agregar
+    ):
         from traffic_engine.domain.exceptions import SimulationNotReadyError
 
         raise SimulationNotReadyError("not ready")
@@ -268,7 +274,13 @@ def test_websocket_serializes_datetime_events() -> None:
 
 def test_api_step_response_has_typed_metrics_and_visualization() -> None:
     class FakeStepsUseCase:
-        def execute(self, simulation_id: str, allow_running: bool = False):
+        def execute(
+            self,
+            simulation_id: str,
+            allow_running: bool = False,
+            limit: int = 50,       # agregar
+            offset: int = 0,       # agregar
+        ):
             metrics = SimulationMetrics(
                 step_number=1, total_vehicles=2, avg_speed_kph=30.0,
                 density=0.1, throughput_veh_per_min=5.0, congestion_ratio=0.0,
